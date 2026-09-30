@@ -2,7 +2,7 @@
 Shared helpers for the bots and the dashboard: local settings file and JSONL history.
 
 settings.json (local only, edited from the dashboard):
-  {"amazon": {"urls": [...], "start_time": "06:30", "end_time": "09:15", "interval": 25}}
+  {"amazon": {"urls": [...], "start_time": "06:30", "end_time": "09:15", "interval": 25, "background_interval": 5}}
 
 History files live in data/<bot>_history.jsonl, one JSON event per line, "ts" in UTC ISO format.
 """
@@ -22,6 +22,7 @@ AMAZON_DEFAULTS = {
     "start_time": "06:30",
     "end_time": "09:15",
     "interval": 25,
+    "background_interval": 5,  # minutes between all-day checks outside the window (0 = off)
 }
 
 
@@ -50,6 +51,8 @@ def record_event(bot: str, event: dict):
     event = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "bot": bot, **event}
     if os.getenv("MANUAL_RUN") == "true":  # started from the dashboard's "Run now"
         event["manual"] = True
+    if os.getenv("BACKGROUND_RUN") == "true":  # Amazon all-day check
+        event["background"] = True
     with open(history_path(bot), "a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 

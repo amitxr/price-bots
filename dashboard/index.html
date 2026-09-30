@@ -255,6 +255,7 @@ td.strong { font-weight: 700; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .strip { display: flex; gap: 2px; height: 28px; align-items: stretch; }
 .strip span { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: var(--neutral-soft); }
+.strip .none { background: var(--fill); }
 .strip .in { background: var(--success); } .strip .out { background: color-mix(in srgb, var(--neutral) 45%, transparent); }
 .strip .captcha { background: var(--warning); } .strip .error { background: var(--danger); } .strip .unknown { background: var(--neutral-soft); }
 .strip-axis { display: flex; justify-content: space-between; }
@@ -381,6 +382,11 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
           <label for="interval">Time between checks</label>
           <div class="input-wrap"><input id="interval" name="interval" type="number" min="10" max="600" step="1" inputmode="numeric"><span class="suffix">seconds</span></div>
           <div class="help">A random ±5 s is added so it looks less like a bot.</div>
+        </div>
+        <div class="field" data-key="amazon.background_interval">
+          <label for="background_interval">All-day check</label>
+          <div class="input-wrap"><input id="background_interval" name="background_interval" type="number" min="0" max="120" step="1" inputmode="numeric"><span class="suffix">minutes</span></div>
+          <div class="help">One check every few minutes outside the morning window, while the PC is awake. 0 turns it off.</div>
         </div>
         <div class="field" data-key="amazon.urls">
           <label for="urls">Product links</label>
@@ -568,7 +574,7 @@ function renderAmazon() {
     </div>
     <div class="products">${rows}</div>
     <dl class="facts">
-      <div><dt>Products</dt><dd>${data.latest.amazon.length}</dd></div>
+      <div><dt>All-day check</dt><dd>${!s ? "—" : s.background_interval > 0 && s.background_state !== "missing" ? `Every ${s.background_interval} min` : "Off"}</dd></div>
       <div><dt>Checks today</dt><dd>${data.audit.amazon.filter((e) => dayKey(new Date(e.ts)) === dayKey(new Date())).length}</dd></div>
       <div><dt>Next watch</dt><dd>${s?.task_state === "missing" ? "Task missing" : when(s?.next_run)}</dd></div>
     </dl>`;
@@ -600,6 +606,29 @@ function renderAlerts() {
   }).join("") : `<div class="empty">${icon("bell")}<div class="t-head">No alerts in the last 7 days</div><div class="t-cap">Restocks and good Eneba rates will show up here.</div></div>`;
 }
 
+// 24 hours in 15-minute slots; each slot shows the most important status seen in it.
+const SLOT_MIN = 15, SLOTS = 96, RANK = { in: 4, captcha: 3, error: 2, out: 1, unknown: 0 };
+const hm = (d) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+function dayStrip(evs) {
+  const end = Date.now(), start = end - SLOTS * SLOT_MIN * 60000;
+  const slots = Array.from({ length: SLOTS }, () => ({ status: null, n: 0 }));
+  for (const e of evs) {
+    const i = Math.floor((new Date(e.ts) - start) / (SLOT_MIN * 60000));
+    if (i < 0 || i >= SLOTS) continue;
+    const s = slots[i]; s.n++;
+    if (s.status === null || (RANK[e.status] ?? 0) > (RANK[s.status] ?? 0)) s.status = e.status;
+  }
+  return slots.map((s, i) => {
+    const from = new Date(start + i * SLOT_MIN * 60000), to = new Date(from.getTime() + SLOT_MIN * 60000);
+    const label = s.n ? `${STATUS[s.status]?.label || s.status} (${s.n} check${s.n > 1 ? "s" : ""})` : "Not checked";
+    return `<span class="${s.status || "none"}" title="${hm(from)}–${hm(to)} · ${label}"></span>`;
+  }).join("");
+}
+function stripAxis() {
+  const end = Date.now();
+  return [24, 18, 12, 6, 0].map((h) => `<span>${h ? hm(new Date(end - h * 3600000)) : "Now"}</span>`).join("");
+}
+
 function renderAudit() {
   const { eneba, amazon } = data.audit;
   $("#n-eneba").textContent = eneba.length;
@@ -625,23 +654,23 @@ function renderAudit() {
     const counts = {};
     for (const e of evs) counts[e.status] = (counts[e.status] || 0) + 1;
     const chips = Object.keys(STATUS).filter((k) => counts[k]).map((k) => pill(STATUS[k].tone, `${STATUS[k].label} ${counts[k]}`, STATUS[k].icon)).join("");
-    const strip = evs.slice(-240).map((e) => `<span class="${e.status}" title="${clock(e.ts)} · ${STATUS[e.status]?.label || e.status}${e.price ? " · " + esc(e.price) : ""}"></span>`).join("");
+    const strip = dayStrip(evs);
     return `<div class="prod-audit">
       <div class="top"><div class="t-head" dir="auto" style="font-size:14px">${esc(name)}</div><div class="chips">${chips}</div></div>
       <div class="strip" role="img" aria-label="${evs.length} checks: ${Object.entries(counts).map(([k, v]) => `${v} ${STATUS[k]?.label || k}`).join(", ")}">${strip}</div>
-      <div class="strip-axis t-cap"><span>${clock(evs[Math.max(0, evs.length - 240)].ts)}</span><span>${clock(evs.at(-1).ts)}</span></div>
+      <div class="strip-axis t-cap">${stripAxis()}</div>
     </div>`;
   }).join("");
   const rows = [...amazon].reverse().slice(0, 500).map((e) => {
     const st = STATUS[e.status] || STATUS.unknown;
-    return `<tr><td>${when(e.ts).replace(/(\d\d:\d\d)$/, clock(e.ts))}${e.test ? '<span class="tag">Test</span>' : e.manual ? '<span class="tag">Manual</span>' : ""}</td>
+    return `<tr><td>${when(e.ts).replace(/(\d\d:\d\d)$/, clock(e.ts))}${e.test ? '<span class="tag">Test</span>' : e.manual ? '<span class="tag">Manual</span>' : e.background ? '<span class="tag">All-day</span>' : ""}</td>
       <td dir="auto" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(shortName(e))}</td>
       <td>${pill(st.tone, st.label, st.icon)}</td><td class="r">${esc(e.price || "—")}</td></tr>`;
   }).join("");
   $("#panel-amazon").innerHTML = `${products}
     <div class="legend" aria-hidden="true">
       <span><i style="background:var(--success)"></i>In stock</span><span><i style="background:color-mix(in srgb,var(--neutral) 45%,transparent)"></i>Out of stock</span>
-      <span><i style="background:var(--warning)"></i>CAPTCHA</span><span><i style="background:var(--danger)"></i>Error</span>
+      <span><i style="background:var(--warning)"></i>CAPTCHA</span><span><i style="background:var(--danger)"></i>Error</span><span><i style="background:var(--fill);outline:1px solid var(--separator)"></i>Not checked</span>
     </div>
     <details><summary>${icon("chev", "i sm")}Show all ${amazon.length} checks${amazon.length > 500 ? " (latest 500)" : ""}</summary>
       <div class="table-wrap"><table><thead><tr><th>Time</th><th>Product</th><th>Status</th><th class="r">Price</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -657,6 +686,7 @@ function fillForm() {
   form.start_time.value = amazon.start_time;
   form.end_time.value = amazon.end_time;
   form.interval.value = amazon.interval;
+  form.background_interval.value = amazon.background_interval;
   form.urls.value = amazon.urls.join("\n");
   $("#eneba-schedule").textContent = `${eneba.schedule}. Next: ${when(eneba.next_run)}.`;
   dirty = false; $("#save").disabled = true;
@@ -675,7 +705,7 @@ form.addEventListener("submit", async (ev) => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         eneba: { threshold: form.threshold.value, product_url: form.product_url.value },
-        amazon: { start_time: form.start_time.value, end_time: form.end_time.value, interval: form.interval.value, urls: form.urls.value.split(/\n+/) },
+        amazon: { start_time: form.start_time.value, end_time: form.end_time.value, interval: form.interval.value, background_interval: form.background_interval.value, urls: form.urls.value.split(/\n+/) },
       }),
     });
     if (!res.ok) {
@@ -732,7 +762,7 @@ function resultMessage(bot, since) {
   }
   const inStock = evs.filter((e) => e.status === "in").length;
   const blocked = evs.filter((e) => e.status === "captcha" || e.status === "error").length;
-  if (inStock) return ["success", "check", `Amazon: ${inStock} of ${evs.length} in stock. Alert sent to Telegram.`];
+  if (inStock) return ["success", "check", `Amazon: ${inStock} of ${evs.length} in stock.${evs.some((e) => e.alert) ? " Alert sent to Telegram." : " Already reported earlier."}`];
   if (blocked) return ["danger", "shield", `Amazon: ${blocked} of ${evs.length} checks were blocked or failed.`];
   return ["neutral", "check", `Amazon: checked ${evs.length} products, none in stock.`];
 }

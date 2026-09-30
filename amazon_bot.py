@@ -15,7 +15,13 @@ Config (environment variables override settings.json, which the dashboard edits)
   TEST_MODE     - "true" = check once, send the status of each product, exit
   RUN_ONCE      - "true" = check each product once with normal alerts, exit
 
-Every check is appended to data/amazon_history.jsonl for the dashboard.
+Command line:
+  --background  - the all-day check (run by Task Scheduler every few minutes):
+                  one check, skipped while the morning window is running
+
+Every check is appended to data/amazon_history.jsonl for the dashboard. Restock
+alerts compare against the last known status in that file, so a product that
+stays in stock is not reported again on every run.
 """
 
 import os
@@ -30,10 +36,16 @@ from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
-from botlib import amazon_settings, record_event, prune_file, history_path
+from botlib import amazon_settings, record_event, prune_file, history_path, parse_events
+
+BACKGROUND = "--background" in sys.argv
+if BACKGROUND:
+    os.environ["BACKGROUND_RUN"] = "true"  # tags history events (see botlib.record_event)
+    os.environ["RUN_ONCE"] = "true"
 
 TZ = ZoneInfo("Asia/Jerusalem")
 SETTINGS = amazon_settings()
+START_TIME = SETTINGS["start_time"]
 URLS = [u.strip() for u in re.split(r"[,\n]", os.getenv("AMAZON_URLS") or "") if u.strip()] or SETTINGS["urls"]
 END_TIME = os.getenv("END_TIME") or SETTINGS["end_time"]
 INTERVAL = int(os.getenv("INTERVAL") or SETTINGS["interval"])
@@ -85,6 +97,21 @@ def past_end() -> bool:
     return (now.hour, now.minute) >= (h, m)
 
 
+def in_morning_window() -> bool:
+    return START_TIME <= f"{datetime.now(TZ):%H:%M}" < END_TIME
+
+
+def last_known_status() -> dict:
+    """Last real in/out status per product link, from the history file."""
+    path = history_path("amazon")
+    last = {}
+    if path.exists():
+        for e in parse_events(path.read_text(encoding="utf-8")):
+            if e.get("status") in ("in", "out") and not e.get("test"):
+                last[e["link"]] = e["status"]
+    return last
+
+
 def check(page, url: str) -> dict:
     """Return {'status': 'in'|'out'|'captcha'|'unknown', 'title', 'price', 'url'}."""
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
@@ -121,11 +148,14 @@ def check(page, url: str) -> dict:
 
 def main():
     status_he = {"in": "✅ במלאי", "out": "❌ אזל", "captcha": "🤖 אמזון ביקשה CAPTCHA", "unknown": "❓ לא זוהה"}
-    last = {u: None for u in URLS}
+    if BACKGROUND and in_morning_window():
+        return  # the morning watch is already checking every few seconds
     captcha_streak = 0
     captcha_warned = False
     errors = 0
     prune_file(history_path("amazon"), days=7)
+    known = last_known_status()
+    last = {u: known.get(u) for u in URLS}
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)

@@ -28,6 +28,7 @@ from botlib import (  # noqa: E402
 HOST, PORT = "127.0.0.1", int(os.getenv("DASHBOARD_PORT") or 8765)
 REPO = os.getenv("GITHUB_REPO") or "amitxr/price-bots"
 TASK_NAME = "Amazon morning watch"
+BACKGROUND_TASK = "Amazon all-day check"
 ENEBA_CRON_HOURS_UTC = (0, 12)  # must match .github/workflows/eneba-check.yml
 INDEX = Path(__file__).resolve().parent / "index.html"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -115,9 +116,9 @@ def gh_variable(name):
         return ""
 
 
-def task_info():
+def task_info(name=TASK_NAME):
     script = (
-        f"$t = Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction Stop; "
+        f"$t = Get-ScheduledTask -TaskName '{name}' -ErrorAction Stop; "
         "$i = $t | Get-ScheduledTaskInfo; "
         "[pscustomobject]@{ start = $t.Triggers[0].StartBoundary; "
         "next = if ($i.NextRunTime) { $i.NextRunTime.ToString('o') } else { $null }; "
@@ -146,13 +147,31 @@ def get_settings():
         "product_url": gh_variable("PRODUCT_URL") or ENEBA_DEFAULT_URL,
     })
     task = task_info()
+    background = task_info(BACKGROUND_TASK)
     amazon = amazon_settings()
     if task["start"]:
         amazon["start_time"] = task["start"]
     return {
         "eneba": {**eneba, "next_run": next_eneba_run(), "schedule": "Every 12 hours (GitHub)"},
-        "amazon": {**amazon, "next_run": task["next"], "task_state": task["state"]},
+        "amazon": {**amazon, "next_run": task["next"], "task_state": task["state"],
+                   "background_next_run": background["next"], "background_state": background["state"]},
     }
+
+
+def set_background_task(minutes):
+    """Create, update or remove the all-day check task (0 minutes = remove)."""
+    if minutes == 0:
+        powershell(f"Unregister-ScheduledTask -TaskName '{BACKGROUND_TASK}' -Confirm:$false -ErrorAction SilentlyContinue")
+        return
+    pythonw = ROOT / ".venv" / "Scripts" / "pythonw.exe"  # no console window every few minutes
+    powershell(
+        f"$a = New-ScheduledTaskAction -Execute '{pythonw}' -Argument 'amazon_bot.py --background' -WorkingDirectory '{ROOT}'; "
+        f"$t = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes {minutes}); "
+        "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+        "-ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew; "
+        f"Register-ScheduledTask -TaskName '{BACKGROUND_TASK}' -Action $a -Trigger $t -Settings $s -Force "
+        "-Description 'Checks Amazon India gift cards all day, outside the morning window' | Out-Null"
+    )
 
 
 def apply_settings(body):
@@ -176,6 +195,12 @@ def apply_settings(body):
             raise ValueError
     except (TypeError, ValueError):
         errors["amazon.interval"] = "Enter whole seconds between 10 and 600."
+    try:
+        background_interval = int(amazon.get("background_interval"))
+        if not 0 <= background_interval <= 120:
+            raise ValueError
+    except (TypeError, ValueError):
+        errors["amazon.background_interval"] = "Enter whole minutes between 1 and 120, or 0 to turn it off."
     start, end = amazon.get("start_time", ""), amazon.get("end_time", "")
     if not TIME_RE.match(start):
         errors["amazon.start_time"] = "Use HH:MM."
@@ -198,8 +223,12 @@ def apply_settings(body):
     _cache["eneba_vars"] = (time.time(), {"threshold": threshold, "product_url": product_url})
 
     settings = load_settings()
-    settings["amazon"] = {"urls": urls, "start_time": start, "end_time": end, "interval": interval}
+    settings["amazon"] = {"urls": urls, "start_time": start, "end_time": end, "interval": interval,
+                          "background_interval": background_interval}
     save_settings(settings)
+    task_exists = current["amazon"]["background_state"] != "missing"
+    if background_interval != current["amazon"]["background_interval"] or task_exists != (background_interval > 0):
+        set_background_task(background_interval)
     if start != current["amazon"]["start_time"]:
         powershell(f"Set-ScheduledTask -TaskName '{TASK_NAME}' "
                    f"-Trigger (New-ScheduledTaskTrigger -Daily -At '{start}') | Out-Null")
