@@ -1,0 +1,31 @@
+name: Eneba price check
+
+on:
+  schedule:
+    - cron: "0 0,12 * * *"   # every 12 hours (03:00 and 15:00 Israel time, summer)
+  workflow_dispatch:          # "Run workflow" button for a manual test
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Check price
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          THRESHOLD: ${{ vars.THRESHOLD }}
+          PRODUCT_URL: ${{ vars.PRODUCT_URL }}
+          ALWAYS_NOTIFY: ${{ vars.ALWAYS_NOTIFY }}
+        run: python eneba_bot.py

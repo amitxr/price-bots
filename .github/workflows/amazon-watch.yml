@@ -1,0 +1,44 @@
+name: Amazon morning watch
+
+on:
+  schedule:
+    # 03:30 UTC = 06:30 Israel (summer) / 05:30 (winter).
+    # Starts early on purpose: GitHub can delay scheduled runs by 5-30 min.
+    # The script itself stops at END_TIME (Israel time).
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Test mode: check once and send the status"
+        type: boolean
+        default: true
+
+concurrency:
+  group: amazon-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Watch
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AMAZON_URLS: ${{ vars.AMAZON_URLS }}
+          END_TIME: ${{ vars.END_TIME }}
+          INTERVAL: ${{ vars.INTERVAL }}
+          TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test && 'true' || 'false' }}
+        run: python amazon_bot.py
