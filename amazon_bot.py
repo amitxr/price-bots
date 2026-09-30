@@ -6,13 +6,15 @@ page every INTERVAL seconds. When a product switches from "unavailable" to
 "can be bought" it sends a Telegram alert with a direct link. It alerts again
 only if the product sells out and comes back.
 
-Config (environment variables):
+Config (environment variables override settings.json, which the dashboard edits):
   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID  - same as the Eneba bot
   AMAZON_URLS   - one or more product links (amzn.in short links are fine),
                   separated by commas or new lines
   END_TIME      - local Israel time to stop, HH:MM (default 09:15)
   INTERVAL      - seconds between checks (default 25)
   TEST_MODE     - "true" = check once, send the status of each product, exit
+
+Every check is appended to data/amazon_history.jsonl for the dashboard.
 """
 
 import os
@@ -27,11 +29,13 @@ from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
+from botlib import amazon_settings, record_event, prune_file, history_path
+
 TZ = ZoneInfo("Asia/Jerusalem")
-DEFAULT_URLS = "https://amzn.in/d/05i6gRjT,https://amzn.in/d/06DEU3Zq"
-URLS = [u.strip() for u in re.split(r"[,\n]", os.getenv("AMAZON_URLS") or DEFAULT_URLS) if u.strip()]
-END_TIME = os.getenv("END_TIME") or "09:15"
-INTERVAL = int(os.getenv("INTERVAL") or 25)
+SETTINGS = amazon_settings()
+URLS = [u.strip() for u in re.split(r"[,\n]", os.getenv("AMAZON_URLS") or "") if u.strip()] or SETTINGS["urls"]
+END_TIME = os.getenv("END_TIME") or SETTINGS["end_time"]
+INTERVAL = int(os.getenv("INTERVAL") or SETTINGS["interval"])
 TEST_MODE = (os.getenv("TEST_MODE") or "").lower() == "true"
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -108,6 +112,7 @@ def main():
     captcha_streak = 0
     captcha_warned = False
     errors = 0
+    prune_file(history_path("amazon"), days=7)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -130,30 +135,35 @@ def main():
                 except Exception as e:
                     errors += 1
                     print(f"{datetime.now(TZ):%H:%M:%S} error on {u}: {e}")
-                    if errors == 10:
+                    alert = errors == 10
+                    if alert:
                         send_telegram(f"⚠️ בוט אמזון: 10 שגיאות ברצף בטעינת הדף ({e})")
+                    record_event("amazon", {"link": u, "status": "error", "error": str(e)[:200],
+                                            "alert": alert, "test": TEST_MODE})
                     continue
 
                 print(f"{datetime.now(TZ):%H:%M:%S} {r['status']:8} {r['price']:>10}  {r['title']}")
+                alert = False
 
                 if TEST_MODE:
                     send_telegram(
                         f"🧪 בדיקת בוט אמזון\n{r['title']}\nמצב: {status_he[r['status']]} {r['price']}\n{r['url']}"
                     )
-                    continue
-
-                if r["status"] == "captcha":
+                elif r["status"] == "captcha":
                     captcha_streak += 1
                     if captcha_streak >= 5 and not captcha_warned:
                         send_telegram("⚠️ בוט אמזון: אמזון חוסמת את הבדיקות (CAPTCHA). ייתכן שצריך להריץ מהמחשב בבית.")
-                        captcha_warned = True
-                    continue
-                captcha_streak = 0
+                        captcha_warned = alert = True
+                else:
+                    captcha_streak = 0
+                    if r["status"] == "in" and last[u] != "in":
+                        send_telegram(f"🚨 חזר למלאי באמזון!\n{r['title']}\n{r['price']}\n{r['url']}")
+                        alert = True
+                    if r["status"] in ("in", "out"):
+                        last[u] = r["status"]
 
-                if r["status"] == "in" and last[u] != "in":
-                    send_telegram(f"🚨 חזר למלאי באמזון!\n{r['title']}\n{r['price']}\n{r['url']}")
-                if r["status"] in ("in", "out"):
-                    last[u] = r["status"]
+                record_event("amazon", {"link": u, "url": r["url"], "product": r["title"], "status": r["status"],
+                                        "price": r["price"], "alert": alert, "test": TEST_MODE})
 
             if TEST_MODE or past_end():
                 break

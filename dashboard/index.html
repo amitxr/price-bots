@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Price Bots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root {
+  --bg: #e4e6ea;
+  --blob-1: rgba(20, 184, 166, .42);
+  --blob-2: rgba(56, 189, 248, .34);
+  --blob-3: rgba(250, 204, 21, .20);
+  --shell: rgba(255, 255, 255, .42);
+  --shell-border: rgba(255, 255, 255, .75);
+  --sidebar: rgba(255, 255, 255, .50);
+  --surface: rgba(255, 255, 255, .62);
+  --surface-2: rgba(255, 255, 255, .80);
+  --fill: rgba(15, 27, 36, .06);
+  --separator: rgba(15, 27, 36, .09);
+  --label: #0f1b24;
+  --label-2: #3f4c58;
+  --label-3: #5a6773;
+  --accent: #0f766e;
+  --accent-hover: #0d6961;
+  --accent-soft: rgba(15, 118, 110, .12);
+  --on-accent: #ffffff;
+  --success: #15803d;  --success-soft: rgba(21, 128, 61, .12);
+  --warning: #a16207;  --warning-soft: rgba(202, 138, 4, .16);
+  --danger: #b91c1c;   --danger-soft: rgba(185, 28, 28, .10);
+  --neutral: #52606d;  --neutral-soft: rgba(82, 96, 109, .12);
+  --shadow: 0 32px 80px -24px rgba(15, 27, 36, .22);
+  --r-lg: 28px; --r-md: 20px; --r-sm: 12px;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --blob-1: rgba(20, 184, 166, .28);
+    --blob-2: rgba(56, 189, 248, .20);
+    --blob-3: rgba(250, 204, 21, .08);
+    --shell: rgba(30, 35, 41, .52);
+    --shell-border: rgba(255, 255, 255, .08);
+    --sidebar: rgba(36, 41, 48, .56);
+    --surface: rgba(44, 50, 58, .62);
+    --surface-2: rgba(54, 61, 70, .78);
+    --fill: rgba(255, 255, 255, .07);
+    --separator: rgba(255, 255, 255, .09);
+    --label: #eef2f5;
+    --label-2: #c3cbd3;
+    --label-3: #9aa5b0;
+    --accent: #2dd4bf;
+    --accent-hover: #5eead4;
+    --accent-soft: rgba(45, 212, 191, .16);
+    --on-accent: #06201d;
+    --success: #4ade80;  --success-soft: rgba(74, 222, 128, .14);
+    --warning: #facc15;  --warning-soft: rgba(250, 204, 21, .14);
+    --danger: #f87171;   --danger-soft: rgba(248, 113, 113, .14);
+    --neutral: #aab4be;  --neutral-soft: rgba(170, 180, 190, .14);
+    --shadow: 0 32px 80px -24px rgba(0, 0, 0, .6);
+  }
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100dvh; background: var(--bg); color: var(--label);
+  font: 400 15px/1.5 "Manrope", ui-sans-serif, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.blobs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.blobs span { position: absolute; border-radius: 50%; filter: blur(64px); }
+.blobs span:nth-child(1) { width: 560px; height: 560px; left: -120px; top: -160px; background: var(--blob-1); }
+.blobs span:nth-child(2) { width: 640px; height: 640px; right: -200px; bottom: -240px; background: var(--blob-2); }
+.blobs span:nth-child(3) { width: 360px; height: 360px; left: 44%; top: 32%; background: var(--blob-3); }
+
+h1, h2, h3, p { margin: 0; }
+.t-large { font-size: 32px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; }
+.t-title { font-size: 20px; line-height: 1.2; font-weight: 700; letter-spacing: -.01em; }
+.t-head { font-size: 16px; line-height: 1.3; font-weight: 700; }
+.t-sub { font-size: 13px; line-height: 1.4; color: var(--label-2); }
+.t-cap { font-size: 12px; line-height: 1.35; color: var(--label-3); letter-spacing: .01em; }
+.t-over { font-size: 12px; line-height: 1.35; font-weight: 700; color: var(--label-3); letter-spacing: .06em; text-transform: uppercase; }
+
+svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 16px; height: 16px; }
+
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.skip { position: absolute; left: 16px; top: -48px; z-index: 10; padding: 8px 16px; border-radius: var(--r-sm); background: var(--surface-2); }
+.skip:focus { top: 16px; }
+
+/* ---------- shell ---------- */
+.shell {
+  position: relative; z-index: 1; display: grid; grid-template-columns: 320px minmax(0, 1fr);
+  max-width: 1360px; margin: 32px auto; min-height: calc(100dvh - 64px);
+  background: var(--shell); border: 1px solid var(--shell-border); border-radius: var(--r-lg);
+  backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+
+/* ---------- sidebar ---------- */
+.sidebar {
+  display: flex; flex-direction: column; gap: 24px; padding: 32px 24px 24px;
+  background: var(--sidebar); border-right: 1px solid var(--separator);
+  max-height: calc(100dvh - 64px); position: sticky; top: 32px; overflow-y: auto;
+}
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
+.brand-mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
+.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav a {
+  display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm);
+  text-decoration: none; font-weight: 600; color: var(--label-2); transition: background-color .2s var(--ease), color .2s var(--ease);
+}
+.nav a:hover { background: var(--fill); color: var(--label); }
+.nav a[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+.nav .count { margin-left: auto; min-width: 24px; padding: 0 8px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; }
+
+.settings { display: flex; flex-direction: column; gap: 16px; padding-top: 24px; border-top: 1px solid var(--separator); }
+.group { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--r-md); background: var(--surface); }
+.group-head { display: flex; align-items: center; gap: 8px; }
+.group-head .t-head { font-size: 15px; }
+.group-head .btn-ghost { margin-left: auto; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--label-2); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.input-wrap { position: relative; display: flex; align-items: center; }
+input, textarea {
+  width: 100%; min-height: 44px; padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--separator);
+  background: var(--surface-2); color: var(--label); font: inherit; font-size: 14px;
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+textarea { resize: vertical; min-height: 72px; line-height: 1.45; }
+input:hover, textarea:hover { border-color: color-mix(in srgb, var(--label) 22%, transparent); }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.input-wrap .suffix { position: absolute; right: 12px; font-size: 13px; color: var(--label-3); pointer-events: none; }
+.input-wrap input { padding-right: 88px; }
+.help { font-size: 12px; line-height: 1.35; color: var(--label-3); }
+.err { font-size: 12px; line-height: 1.35; color: var(--danger); font-weight: 600; }
+.field.invalid input, .field.invalid textarea { border-color: var(--danger); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px;
+  border: 0; border-radius: 999px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: background-color .2s var(--ease), opacity .2s var(--ease), transform .1s var(--ease);
+}
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-ghost { min-height: 32px; padding: 0 12px; font-size: 13px; background: var(--fill); color: var(--label); position: relative; }
+.btn-ghost::after { content: ""; position: absolute; inset: -6px 0; } /* 44px hit area */
+.btn-ghost:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.icon-btn { width: 44px; padding: 0; background: var(--surface); color: var(--label-2); }
+.icon-btn:hover { background: var(--surface-2); color: var(--label); }
+.icon-btn.spin svg { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.save-bar { position: sticky; bottom: -24px; margin: 0 -24px -24px; padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 8px; background: linear-gradient(to top, var(--sidebar) 70%, transparent); }
+.save-bar .btn { width: 100%; }
+.status-msg { min-height: 18px; font-size: 13px; font-weight: 600; text-align: center; }
+.status-msg.ok { color: var(--success); } .status-msg.bad { color: var(--danger); } .status-msg.dim { color: var(--label-3); font-weight: 500; }
+
+/* ---------- main ---------- */
+main { padding: 32px 40px 48px; display: flex; flex-direction: column; gap: 40px; min-width: 0; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.page-head .t-sub { margin-top: 8px; }
+section { scroll-margin-top: 24px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.sec-head .t-title { display: flex; align-items: center; gap: 8px; }
+
+.card { background: var(--surface); border-radius: var(--r-md); padding: 24px; min-width: 0; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.card-head .t-cap { margin-top: 2px; }
+.card-head .pill { margin-left: auto; }
+.bot-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+.bot-icon.eneba { background: var(--accent-soft); color: var(--accent); }
+.bot-icon.amazon { background: var(--warning-soft); color: var(--warning); }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pill.success { background: var(--success-soft); color: var(--success); }
+.pill.warning { background: var(--warning-soft); color: var(--warning); }
+.pill.danger  { background: var(--danger-soft);  color: var(--danger); }
+.pill.neutral { background: var(--neutral-soft); color: var(--neutral); }
+.pill.accent  { background: var(--accent-soft);  color: var(--accent); }
+
+.metric { display: flex; align-items: baseline; gap: 8px; }
+.metric .num { font-size: 48px; line-height: 1; font-weight: 800; letter-spacing: -.03em; }
+.metric .unit { font-size: 15px; font-weight: 600; color: var(--label-2); }
+.meter { margin: 16px 0 8px; height: 8px; border-radius: 999px; background: var(--fill); overflow: hidden; }
+.meter > div { height: 100%; border-radius: inherit; background: var(--accent); transform-origin: left; transition: width .4s var(--ease); }
+.meter.hit > div { background: var(--success); }
+.meter-legend { display: flex; justify-content: space-between; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--separator); }
+.facts dt { font-size: 12px; color: var(--label-3); }
+.facts dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; }
+
+.products { display: flex; flex-direction: column; }
+.product { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--separator); }
+.product:first-child { padding-top: 0; }
+.product:last-child { border-bottom: 0; }
+.product .name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product .name a { text-decoration: none; } .product .name a:hover { text-decoration: underline; }
+.product .meta { grid-column: 1; }
+
+/* alerts */
+.list { display: flex; flex-direction: column; }
+.alert-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--separator); }
+.alert-row:first-child { padding-top: 0; } .alert-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.alert-row .what { font-weight: 700; font-size: 14px; }
+.alert-row .detail { font-size: 13px; color: var(--label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-row time { text-align: right; font-size: 13px; font-weight: 600; color: var(--label-2); white-space: nowrap; }
+.alert-row time small { display: block; font-size: 12px; font-weight: 500; color: var(--label-3); }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 16px; text-align: center; color: var(--label-3); }
+.empty svg.i { width: 28px; height: 28px; color: var(--label-3); }
+.empty .t-head { color: var(--label-2); font-size: 15px; }
+
+/* audit */
+.segmented { display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; background: var(--fill); }
+.segmented button {
+  min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--label-2);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; position: relative; transition: background-color .2s var(--ease), color .2s var(--ease);
+}
+.segmented button::after { content: ""; position: absolute; inset: -4px 0; }
+.segmented button[aria-selected="true"] { background: var(--surface-2); color: var(--label); box-shadow: 0 1px 3px rgba(15, 27, 36, .12); }
+.segmented .n { color: var(--label-3); font-weight: 600; margin-left: 4px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; font-weight: 700; color: var(--label-3); letter-spacing: .02em; padding: 0 12px 12px 0; border-bottom: 1px solid var(--separator); }
+td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--separator); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+th.r, td.r { text-align: right; padding-right: 0; }
+td.strong { font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+.tag { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; background: var(--fill); font-size: 11px; font-weight: 700; color: var(--label-3); line-height: 20px; vertical-align: middle; }
+
+.prod-audit { display: flex; flex-direction: column; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--separator); }
+.prod-audit:first-child { padding-top: 0; }
+.prod-audit .top { display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.strip { display: flex; gap: 2px; height: 28px; align-items: stretch; }
+.strip span { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: var(--neutral-soft); }
+.strip .in { background: var(--success); } .strip .out { background: color-mix(in srgb, var(--neutral) 45%, transparent); }
+.strip .captcha { background: var(--warning); } .strip .error { background: var(--danger); } .strip .unknown { background: var(--neutral-soft); }
+.strip-axis { display: flex; justify-content: space-between; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--label-2); }
+.legend i { width: 10px; height: 10px; border-radius: 3px; }
+details { margin-top: 16px; }
+summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-weight: 700; font-size: 14px; color: var(--accent); list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary svg { transition: transform .2s var(--ease); }
+details[open] summary svg { transform: rotate(90deg); }
+details .table-wrap { max-height: 420px; overflow-y: auto; margin-top: 8px; }
+details thead th { position: sticky; top: 0; background: var(--surface-2); padding-top: 8px; }
+
+.banner { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: var(--r-md); background: var(--danger-soft); color: var(--danger); font-size: 14px; font-weight: 600; }
+.skeleton { color: transparent !important; background: var(--fill); border-radius: 8px; }
+
+/* motion */
+.reveal { animation: rise .45s var(--ease) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; }
+  .reveal { animation-name: fade; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .icon-btn.spin svg { animation: none; }
+}
+
+/* responsive */
+@media (max-width: 1100px) { .cards { grid-template-columns: minmax(0, 1fr); } main { padding: 32px 24px 48px; } }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: minmax(0, 1fr); margin: 16px; min-height: auto; }
+  .sidebar { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--separator); }
+  .save-bar { position: static; margin: 0; padding: 0; background: none; }
+  main { padding: 24px 16px 40px; }
+  .facts { grid-template-columns: 1fr 1fr; }
+  .page-head .t-large { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="blobs" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-overview" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-audit" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></symbol>
+  <symbol id="i-game" viewBox="0 0 24 24"><path d="M6 12h4M8 10v4M15 13h.01M18 11h.01"/><rect width="20" height="12" x="2" y="6" rx="2"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4M12 16h.01"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-mark" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12L17 12h4"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Navigation and settings">
+    <div class="brand">
+      <div class="brand-mark"><svg class="i"><use href="#i-mark"/></svg></div>
+      <div><div class="t-head">Price Bots</div><div class="t-cap">Eneba · Amazon India</div></div>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#overview" aria-current="true"><svg class="i"><use href="#i-overview"/></svg>Overview</a>
+      <a href="#alerts"><svg class="i"><use href="#i-bell"/></svg>Alerts<span class="count" id="alert-count" hidden></span></a>
+      <a href="#audit"><svg class="i"><use href="#i-audit"/></svg>Audit</a>
+    </nav>
+
+    <form class="settings" id="settings" novalidate>
+      <div class="t-over">Settings</div>
+
+      <fieldset class="group" style="border:0;margin:0">
+        <div class="group-head">
+          <span class="bot-icon eneba" style="width:32px;height:32px;border-radius:8px"><svg class="i sm"><use href="#i-game"/></svg></span>
+          <legend class="t-head" style="padding:0">Eneba</legend>
+          <button type="button" class="btn btn-ghost" id="run-eneba"><svg class="i sm"><use href="#i-play"/></svg>Check now</button>
+        </div>
+        <div class="field" data-key="eneba.threshold">
+          <label for="threshold">Alert threshold</label>
+          <div class="input-wrap"><input id="threshold" name="threshold" type="number" step="0.1" min="1" max="200" inputmode="decimal"><span class="suffix">INR per ₪1</span></div>
+          <div class="help">Alert when the Best value rate reaches this.</div>
+        </div>
+        <div class="field" data-key="eneba.product_url">
+          <label for="product_url">Product page</label>
+          <input id="product_url" name="product_url" type="url" spellcheck="false">
+        </div>
+        <div class="help" id="eneba-schedule">Runs every 12 hours on GitHub.</div>
+      </fieldset>
+
+      <fieldset class="group" style="border:0;margin:0">
+        <div class="group-head">
+          <span class="bot-icon amazon" style="width:32px;height:32px;border-radius:8px"><svg class="i sm"><use href="#i-box"/></svg></span>
+          <legend class="t-head" style="padding:0">Amazon</legend>
+          <button type="button" class="btn btn-ghost" id="run-amazon"><svg class="i sm"><use href="#i-play"/></svg>Run test</button>
+        </div>
+        <div class="row2">
+          <div class="field" data-key="amazon.start_time"><label for="start_time">Start</label><input id="start_time" name="start_time" type="time"></div>
+          <div class="field" data-key="amazon.end_time"><label for="end_time">End</label><input id="end_time" name="end_time" type="time"></div>
+        </div>
+        <div class="field" data-key="amazon.interval">
+          <label for="interval">Time between checks</label>
+          <div class="input-wrap"><input id="interval" name="interval" type="number" min="10" max="600" step="1" inputmode="numeric"><span class="suffix">seconds</span></div>
+          <div class="help">A random ±5 s is added so it looks less like a bot.</div>
+        </div>
+        <div class="field" data-key="amazon.urls">
+          <label for="urls">Product links</label>
+          <textarea id="urls" name="urls" rows="3" spellcheck="false"></textarea>
+          <div class="help">One link per line.</div>
+        </div>
+      </fieldset>
+
+      <div class="save-bar">
+        <button type="submit" class="btn btn-primary" id="save" disabled>Save settings</button>
+        <div class="status-msg dim" id="settings-status" role="status" aria-live="polite">Loading settings…</div>
+      </div>
+    </form>
+  </aside>
+
+  <main id="main">
+    <section id="overview">
+      <div class="page-head">
+        <div>
+          <h1 class="t-large">Overview</h1>
+          <p class="t-sub" id="updated">Loading…</p>
+        </div>
+        <button class="btn icon-btn" id="refresh" aria-label="Refresh now" title="Refresh now"><svg class="i"><use href="#i-refresh"/></svg></button>
+      </div>
+      <div id="banner" style="margin-top:24px" hidden></div>
+      <div class="cards" style="margin-top:24px">
+        <article class="card reveal" id="eneba-card" aria-labelledby="eneba-title"></article>
+        <article class="card reveal" id="amazon-card" style="animation-delay:.05s" aria-labelledby="amazon-title"></article>
+      </div>
+    </section>
+
+    <section id="alerts" class="reveal" style="animation-delay:.1s">
+      <div class="sec-head">
+        <h2 class="t-title">Alerts</h2>
+        <span class="t-cap">Last 7 days</span>
+      </div>
+      <div class="card"><div class="list" id="alert-list"></div></div>
+    </section>
+
+    <section id="audit" class="reveal" style="animation-delay:.15s">
+      <div class="sec-head">
+        <h2 class="t-title">Audit <span class="t-sub" style="font-weight:500">· last 24 hours</span></h2>
+        <div class="segmented" role="tablist" aria-label="Bot">
+          <button role="tab" id="tab-eneba" aria-controls="panel-eneba" aria-selected="true">Eneba<span class="n" id="n-eneba"></span></button>
+          <button role="tab" id="tab-amazon" aria-controls="panel-amazon" aria-selected="false" tabindex="-1">Amazon<span class="n" id="n-amazon"></span></button>
+        </div>
+      </div>
+      <div class="card" role="tabpanel" id="panel-eneba" aria-labelledby="tab-eneba"></div>
+      <div class="card" role="tabpanel" id="panel-amazon" aria-labelledby="tab-amazon" hidden></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const icon = (id, cls = "i") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (n, d = 2) => Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const STATUS = {
+  in:      { label: "In stock",     tone: "success", icon: "check" },
+  out:     { label: "Out of stock", tone: "neutral", icon: "x" },
+  captcha: { label: "CAPTCHA",      tone: "warning", icon: "shield" },
+  error:   { label: "Error",        tone: "danger",  icon: "warn" },
+  unknown: { label: "Unknown",      tone: "neutral", icon: "help" },
+};
+const pill = (tone, text, ic) => `<span class="pill ${tone}">${ic ? icon(ic, "i sm") : ""}${esc(text)}</span>`;
+
+// ---------- time ----------
+const dayKey = (d) => d.toDateString();
+function when(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts), now = new Date();
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (dayKey(d) === dayKey(now)) return `Today ${time}`;
+  if (dayKey(d) === dayKey(tomorrow)) return `Tomorrow ${time}`;
+  if (dayKey(d) === dayKey(yesterday)) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${time}`;
+}
+const clock = (ts) => new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+function ago(ts) {
+  const s = (Date.now() - new Date(ts)) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+const shortName = (e) => e?.product || e?.link || "Amazon product";
+
+// ---------- state ----------
+let data = null, settings = null, dirty = false;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.message || `Request failed (${r.status})`);
+  return body;
+}
+
+async function loadData() {
+  const btn = $("#refresh");
+  btn.classList.add("spin");
+  try {
+    data = await api("/api/data?hours=24");
+    render();
+  } catch (e) {
+    $("#banner").hidden = false;
+    $("#banner").innerHTML = `<div class="banner">${icon("warn")}<div>Could not reach the dashboard server. ${esc(e.message)}</div></div>`;
+  } finally {
+    btn.classList.remove("spin");
+  }
+}
+
+async function loadSettings() {
+  try {
+    settings = await api("/api/settings");
+    if (!dirty) fillForm();
+    setStatus("dim", "");
+    render();
+  } catch (e) {
+    setStatus("bad", `Could not load settings: ${e.message}`);
+  }
+}
+
+// ---------- render ----------
+function render() {
+  if (!data) return;
+  $("#updated").textContent = `Updated ${when(data.now)} · refreshes every minute`;
+  const err = data.errors?.eneba;
+  $("#banner").hidden = !err;
+  if (err) $("#banner").innerHTML = `<div class="banner">${icon("warn")}<div>${esc(err)}</div></div>`;
+  renderEneba(); renderAmazon(); renderAlerts(); renderAudit();
+}
+
+function renderEneba() {
+  const e = data.latest.eneba, s = settings?.eneba;
+  const threshold = e?.threshold ?? s?.threshold ?? 24;
+  let status = pill("neutral", "No runs yet", "help");
+  let body = `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba history yet</div><div class="t-cap">The next GitHub run will appear here.</div></div>`;
+  if (e?.error) {
+    status = pill("danger", "Error", "warn");
+    body = `<p class="t-sub" dir="auto">${esc(e.error)}</p>`;
+  } else if (e) {
+    const hit = e.ratio >= threshold;
+    status = hit ? pill("success", "Above threshold", "up") : pill("neutral", "Below threshold");
+    const pct = Math.min(100, (e.ratio / threshold) * 100);
+    body = `
+      <div class="metric"><span class="num">${num(e.ratio)}</span><span class="unit">INR per ₪1</span></div>
+      <div class="meter ${hit ? "hit" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${threshold}" aria-valuenow="${e.ratio}" aria-label="Rate compared with threshold"><div style="width:${pct}%"></div></div>
+      <div class="meter-legend t-cap"><span>${hit ? "Threshold reached" : `${num(threshold - e.ratio)} below threshold`}</span><span>Threshold ${threshold}</span></div>`;
+  }
+  $("#eneba-card").innerHTML = `
+    <div class="card-head">
+      <span class="bot-icon eneba">${icon("game")}</span>
+      <div><h3 class="t-head" id="eneba-title">Eneba · PSN India</h3><div class="t-cap">Best value tile</div></div>
+      ${status}
+    </div>
+    ${body}
+    <dl class="facts">
+      <div><dt>Best value</dt><dd>${e && !e.error ? `${num(e.inr, 0)} INR · ₪${num(e.ils)}` : "—"}</dd></div>
+      <div><dt>Last check</dt><dd>${when(e?.ts)}</dd></div>
+      <div><dt>Next check</dt><dd>${when(s?.next_run)}</dd></div>
+    </dl>`;
+}
+
+function renderAmazon() {
+  const s = settings?.amazon;
+  const rows = data.latest.amazon.map((e) => {
+    const st = STATUS[e.status] || null;
+    return `<div class="product">
+      <div class="name" dir="auto" title="${esc(shortName(e))}"><a href="${esc(e.url || e.link)}" target="_blank" rel="noopener">${esc(shortName(e))}</a></div>
+      ${st ? pill(st.tone, st.label, st.icon) : pill("neutral", "Not checked yet")}
+      <div class="meta t-cap">${e.ts ? `${esc(e.price || "")}${e.price ? " · " : ""}checked ${ago(e.ts)}` : esc(e.link)}</div>
+    </div>`;
+  }).join("");
+  $("#amazon-card").innerHTML = `
+    <div class="card-head">
+      <span class="bot-icon amazon">${icon("box")}</span>
+      <div><h3 class="t-head" id="amazon-title">Amazon India · Gift cards</h3><div class="t-cap">Restock watch on this PC</div></div>
+      ${s ? pill("accent", `${s.start_time}–${s.end_time} · every ${s.interval}s`) : ""}
+    </div>
+    <div class="products">${rows}</div>
+    <dl class="facts">
+      <div><dt>Products</dt><dd>${data.latest.amazon.length}</dd></div>
+      <div><dt>Checks today</dt><dd>${data.audit.amazon.filter((e) => dayKey(new Date(e.ts)) === dayKey(new Date())).length}</dd></div>
+      <div><dt>Next watch</dt><dd>${s?.task_state === "missing" ? "Task missing" : when(s?.next_run)}</dd></div>
+    </dl>`;
+}
+
+function alertInfo(e) {
+  if (e.bot === "eneba") {
+    if (e.error) return { ic: "warn", tone: "danger", what: "Eneba check failed", detail: e.error };
+    return { ic: "up", tone: "success", what: `Eneba rate ${num(e.ratio)} INR per ₪1`, detail: `${num(e.inr, 0)} INR for ₪${num(e.ils)} · threshold ${e.threshold}` };
+  }
+  if (e.status === "in") return { ic: "check", tone: "success", what: "Back in stock on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}` };
+  if (e.status === "captcha") return { ic: "shield", tone: "warning", what: "Amazon is showing CAPTCHAs", detail: "Checks are being blocked" };
+  return { ic: "warn", tone: "danger", what: "Amazon page keeps failing", detail: e.error || shortName(e) };
+}
+
+function renderAlerts() {
+  const alerts = data.alerts;
+  const count = $("#alert-count");
+  const today = alerts.filter((a) => dayKey(new Date(a.ts)) === dayKey(new Date())).length;
+  count.hidden = !today; count.textContent = today; count.setAttribute("aria-label", `${today} alerts today`);
+  $("#alert-list").innerHTML = alerts.length ? alerts.map((e) => {
+    const a = alertInfo(e);
+    const d = new Date(e.ts);
+    return `<div class="alert-row">
+      <span class="bot-icon" style="background:var(--${a.tone}-soft);color:var(--${a.tone})">${icon(a.ic)}</span>
+      <div style="min-width:0"><div class="what">${esc(a.what)}</div><div class="detail" dir="auto">${esc(a.detail)}</div></div>
+      <time datetime="${e.ts}">${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}<small>${when(e.ts).split(" ")[0] === "Today" ? "Today" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</small></time>
+    </div>`;
+  }).join("") : `<div class="empty">${icon("bell")}<div class="t-head">No alerts in the last 7 days</div><div class="t-cap">Restocks and good Eneba rates will show up here.</div></div>`;
+}
+
+function renderAudit() {
+  const { eneba, amazon } = data.audit;
+  $("#n-eneba").textContent = eneba.length;
+  $("#n-amazon").textContent = amazon.length;
+
+  $("#panel-eneba").innerHTML = eneba.length ? `<div class="table-wrap"><table>
+    <thead><tr><th>Time</th><th>Best value</th><th class="r">Price</th><th class="r">Rate</th><th class="r">Result</th></tr></thead>
+    <tbody>${[...eneba].reverse().map((e) => e.error
+      ? `<tr><td>${when(e.ts)}</td><td colspan="3" dir="auto">${esc(e.error)}</td><td class="r">${pill("danger", "Error", "warn")}</td></tr>`
+      : `<tr><td>${when(e.ts)}</td><td>${num(e.inr, 0)} INR</td><td class="r">₪${num(e.ils)}</td><td class="r strong">${num(e.ratio)}</td>
+         <td class="r">${e.alert ? pill("success", "Alert sent", "bell") : pill("neutral", `Below ${e.threshold}`)}</td></tr>`).join("")}
+    </tbody></table></div>`
+    : `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba runs in the last 24 hours</div><div class="t-cap">It runs every 12 hours, or use “Check now”.</div></div>`;
+
+  if (!amazon.length) {
+    $("#panel-amazon").innerHTML = `<div class="empty">${icon("inbox")}<div class="t-head">No Amazon checks in the last 24 hours</div><div class="t-cap">The watch runs every morning, or use “Run test”.</div></div>`;
+    return;
+  }
+  const byLink = {};
+  for (const e of amazon) (byLink[e.link] ||= []).push(e);
+  const products = Object.entries(byLink).map(([link, evs]) => {
+    const name = shortName(evs.findLast((e) => e.product) || { link });
+    const counts = {};
+    for (const e of evs) counts[e.status] = (counts[e.status] || 0) + 1;
+    const chips = Object.keys(STATUS).filter((k) => counts[k]).map((k) => pill(STATUS[k].tone, `${STATUS[k].label} ${counts[k]}`, STATUS[k].icon)).join("");
+    const strip = evs.slice(-240).map((e) => `<span class="${e.status}" title="${clock(e.ts)} · ${STATUS[e.status]?.label || e.status}${e.price ? " · " + esc(e.price) : ""}"></span>`).join("");
+    return `<div class="prod-audit">
+      <div class="top"><div class="t-head" dir="auto" style="font-size:14px">${esc(name)}</div><div class="chips">${chips}</div></div>
+      <div class="strip" role="img" aria-label="${evs.length} checks: ${Object.entries(counts).map(([k, v]) => `${v} ${STATUS[k]?.label || k}`).join(", ")}">${strip}</div>
+      <div class="strip-axis t-cap"><span>${clock(evs[Math.max(0, evs.length - 240)].ts)}</span><span>${clock(evs.at(-1).ts)}</span></div>
+    </div>`;
+  }).join("");
+  const rows = [...amazon].reverse().slice(0, 500).map((e) => {
+    const st = STATUS[e.status] || STATUS.unknown;
+    return `<tr><td>${when(e.ts).replace(/(\d\d:\d\d)$/, clock(e.ts))}${e.test ? '<span class="tag">Test</span>' : ""}</td>
+      <td dir="auto" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(shortName(e))}</td>
+      <td>${pill(st.tone, st.label, st.icon)}</td><td class="r">${esc(e.price || "—")}</td></tr>`;
+  }).join("");
+  $("#panel-amazon").innerHTML = `${products}
+    <div class="legend" aria-hidden="true">
+      <span><i style="background:var(--success)"></i>In stock</span><span><i style="background:color-mix(in srgb,var(--neutral) 45%,transparent)"></i>Out of stock</span>
+      <span><i style="background:var(--warning)"></i>CAPTCHA</span><span><i style="background:var(--danger)"></i>Error</span>
+    </div>
+    <details><summary>${icon("chev", "i sm")}Show all ${amazon.length} checks${amazon.length > 500 ? " (latest 500)" : ""}</summary>
+      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Product</th><th>Status</th><th class="r">Price</th></tr></thead><tbody>${rows}</tbody></table></div>
+    </details>`;
+}
+
+// ---------- settings form ----------
+const form = $("#settings");
+function fillForm() {
+  const { eneba, amazon } = settings;
+  form.threshold.value = eneba.threshold;
+  form.product_url.value = eneba.product_url;
+  form.start_time.value = amazon.start_time;
+  form.end_time.value = amazon.end_time;
+  form.interval.value = amazon.interval;
+  form.urls.value = amazon.urls.join("\n");
+  $("#eneba-schedule").textContent = `${eneba.schedule}. Next: ${when(eneba.next_run)}.`;
+  dirty = false; $("#save").disabled = true;
+}
+function setStatus(kind, text) { const el = $("#settings-status"); el.className = `status-msg ${kind}`; el.textContent = text; }
+function clearErrors() { form.querySelectorAll(".field").forEach((f) => { f.classList.remove("invalid"); f.querySelector(".err")?.remove(); }); }
+
+form.addEventListener("input", () => { dirty = true; $("#save").disabled = false; setStatus("dim", "Unsaved changes"); });
+form.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  clearErrors();
+  const save = $("#save");
+  save.disabled = true; save.textContent = "Saving…";
+  try {
+    const res = await api("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eneba: { threshold: form.threshold.value, product_url: form.product_url.value },
+        amazon: { start_time: form.start_time.value, end_time: form.end_time.value, interval: form.interval.value, urls: form.urls.value.split(/\n+/) },
+      }),
+    });
+    if (!res.ok) {
+      let first = null;
+      for (const [key, msg] of Object.entries(res.errors)) {
+        const f = form.querySelector(`[data-key="${key}"]`);
+        if (!f) continue;
+        f.classList.add("invalid");
+        f.insertAdjacentHTML("beforeend", `<div class="err" role="alert">${esc(msg)}</div>`);
+        first ||= f.querySelector("input,textarea");
+      }
+      first?.focus();
+      setStatus("bad", "Fix the highlighted fields.");
+      save.disabled = false;
+      return;
+    }
+    settings = res.settings; fillForm(); render();
+    setStatus("ok", "Settings saved");
+  } catch (e) {
+    setStatus("bad", e.message); save.disabled = false;
+  } finally {
+    save.textContent = "Save settings";
+  }
+});
+
+async function action(btn, path) {
+  btn.disabled = true;
+  try { setStatus("ok", (await api(path, { method: "POST" })).message); }
+  catch (e) { setStatus("bad", e.message); }
+  finally { setTimeout(() => (btn.disabled = false), 3000); }
+}
+$("#run-eneba").addEventListener("click", (e) => action(e.currentTarget, "/api/run/eneba"));
+$("#run-amazon").addEventListener("click", (e) => action(e.currentTarget, "/api/run/amazon-test"));
+$("#refresh").addEventListener("click", () => { loadData(); loadSettings(); });
+
+// ---------- tabs ----------
+const tabs = [$("#tab-eneba"), $("#tab-amazon")];
+function selectTab(t) {
+  for (const x of tabs) {
+    const on = x === t;
+    x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1;
+    $("#" + x.getAttribute("aria-controls")).hidden = !on;
+  }
+}
+tabs.forEach((t, i) => {
+  t.addEventListener("click", () => selectTab(t));
+  t.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") { const n = tabs[(i + 1) % 2]; selectTab(n); n.focus(); }
+  });
+});
+
+// ---------- nav highlight ----------
+const links = [...document.querySelectorAll(".nav a")];
+const io = new IntersectionObserver((entries) => {
+  for (const en of entries) if (en.isIntersecting) links.forEach((a) => a.setAttribute("aria-current", a.hash === "#" + en.target.id));
+}, { rootMargin: "-40% 0px -55% 0px" });
+document.querySelectorAll("main section").forEach((s) => io.observe(s));
+
+loadData(); loadSettings();
+setInterval(loadData, 60_000);
+setInterval(() => { if (!dirty) loadSettings(); }, 5 * 60_000);
+</script>
+</body>
+</html>

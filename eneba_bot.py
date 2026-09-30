@@ -22,10 +22,9 @@ import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
-PRODUCT_URL = (
-    os.getenv("PRODUCT_URL")
-    or "https://www.eneba.com/psn-playstation-network-card-rs-3000-in-psn-key-india"
-)
+from botlib import ENEBA_DEFAULT_URL, record_event
+
+PRODUCT_URL = os.getenv("PRODUCT_URL") or ENEBA_DEFAULT_URL
 THRESHOLD = float(os.getenv("THRESHOLD", "24") or 24)
 ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "false").lower() == "true"
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -124,17 +123,25 @@ def send_telegram(msg: str):
 # ---------- main ----------
 
 def main():
+    event = run_check()
+    record_event("eneba", {"threshold": THRESHOLD, "url": PRODUCT_URL, **event})
+    if event.get("error"):
+        sys.exit(1)
+
+
+def run_check() -> dict:
+    """Check the page, send Telegram messages, and return the result as a history event."""
     try:
         text = fetch_page_text(PRODUCT_URL)
     except Exception as e:
         send_telegram(f"⚠️ בוט Eneba: לא הצלחתי לטעון את הדף ({e})")
-        sys.exit(1)
+        return {"error": f"Page failed to load: {str(e)[:200]}", "alert": True}
 
     tiles = parse_tiles(text)
     if not tiles:
         send_telegram("⚠️ בוט Eneba: הדף נטען אבל לא מצאתי מחירים. ייתכן שהאתר חסם או שינה עיצוב.")
         print(text[:3000])
-        sys.exit(1)
+        return {"error": "Page loaded but no prices were found", "alert": True}
 
     rate = to_ils_rate(tiles[0]["currency"])
     for t in tiles:
@@ -156,10 +163,19 @@ def main():
     for t in sorted(tiles, key=lambda t: t["inr"]):
         print(f"  {int(t['inr'])} INR  ₪{t['ils']:.2f}  {t['ratio']:.2f}{'  <- best' if t is best else ''}")
 
-    if best["ratio"] >= THRESHOLD:
+    alert = best["ratio"] >= THRESHOLD
+    if alert:
         send_telegram(f"🎯 מחיר טוב ב-Eneba!\n{summary}\n{PRODUCT_URL}")
     elif ALWAYS_NOTIFY:
         send_telegram(f"ℹ️ בדיקת Eneba – עדיין מתחת לסף\n{summary}")
+
+    return {
+        "inr": best["inr"],
+        "ils": best["ils"],
+        "ratio": best["ratio"],
+        "source": "site" if label == "Best value" else "computed",
+        "alert": alert,
+    }
 
 
 if __name__ == "__main__":
