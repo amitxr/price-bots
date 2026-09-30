@@ -22,9 +22,9 @@ import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
-PRODUCT_URL = os.getenv(
-    "PRODUCT_URL",
-    "https://www.eneba.com/psn-playstation-network-card-rs-3000-in-psn-key-india",
+PRODUCT_URL = (
+    os.getenv("PRODUCT_URL")
+    or "https://www.eneba.com/psn-playstation-network-card-rs-3000-in-psn-key-india"
 )
 THRESHOLD = float(os.getenv("THRESHOLD", "24") or 24)
 ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "false").lower() == "true"
