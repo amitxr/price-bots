@@ -51,6 +51,17 @@ BUY_SELECTORS = [
 ]
 OUT_TEXTS = ["currently unavailable", "out of stock", "temporarily out of stock"]
 CAPTCHA_TEXTS = ["enter the characters you see below", "type the characters you see"]
+# Only the product's own price blocks. A page-wide ".a-price" also matches the
+# "Customers also viewed" carousels, which is where wrong prices came from when
+# the product itself has no price (out of stock).
+PRICE_SELECTORS = [
+    "#corePrice_feature_div .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-offscreen",
+    "#apex_desktop .a-price .a-offscreen",
+    "#buybox .a-price .a-offscreen",
+    "#price_inside_buybox",
+    "#gc-live-preview-amount",
+]
 
 
 def send_telegram(msg: str):
@@ -86,9 +97,9 @@ def check(page, url: str) -> dict:
     if page.locator("#productTitle").count():
         title = page.locator("#productTitle").first.inner_text().strip()
     price = ""
-    for sel in ["#corePrice_feature_div .a-offscreen", ".a-price .a-offscreen", "#gc-live-preview-amount"]:
+    for sel in PRICE_SELECTORS:
         if page.locator(sel).count():
-            price = page.locator(sel).first.inner_text().strip()
+            price = (page.locator(sel).first.text_content() or "").strip()
             if price:
                 break
     info = {"title": title[:80] or "מוצר באמזון", "price": price, "url": page.url.split("?")[0]}
