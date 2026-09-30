@@ -150,7 +150,7 @@ input:focus, textarea:focus { outline: none; border-color: var(--accent); box-sh
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px;
-  border: 0; border-radius: 999px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer;
+  border: 0; border-radius: 999px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap;
   transition: background-color .2s var(--ease), opacity .2s var(--ease), transform .1s var(--ease);
 }
 .btn:active { transform: scale(.97); }
@@ -184,7 +184,8 @@ section { scroll-margin-top: 24px; }
 
 .card { background: var(--surface); border-radius: var(--r-md); padding: 24px; min-width: 0; }
 .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 24px; }
+.card-head > div:not(.actions) { flex: 1 1 200px; min-width: 0; }
 .card-head .t-cap { margin-top: 2px; }
 .card-head .pill { margin-left: auto; }
 .bot-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; }
@@ -268,6 +269,21 @@ details[open] summary svg { transform: rotate(90deg); }
 details .table-wrap { max-height: 420px; overflow-y: auto; margin-top: 8px; }
 details thead th { position: sticky; top: 0; background: var(--surface-2); padding-top: 8px; }
 
+.card-head .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.card-head .actions .pill { margin-left: 0; }
+.btn-run { min-height: 36px; padding: 0 16px; font-size: 13px; background: var(--accent); color: var(--on-accent); position: relative; }
+.btn-run::after { content: ""; position: absolute; inset: -4px 0; }
+.btn-run:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-run[aria-busy="true"] { background: var(--accent-soft); color: var(--accent); opacity: 1; cursor: progress; }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+.toast {
+  position: fixed; left: 50%; bottom: 24px; z-index: 20; display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 20px; border-radius: 999px; background: color-mix(in srgb, var(--surface-2) 92%, transparent); border: 1px solid var(--shell-border);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: var(--shadow); font-size: 14px; font-weight: 600;
+  transform: translate(-50%, 16px); opacity: 0; pointer-events: none; transition: opacity .25s var(--ease), transform .25s var(--ease);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.success svg { color: var(--success); } .toast.danger svg { color: var(--danger); } .toast.neutral svg { color: var(--label-3); }
 .banner { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: var(--r-md); background: var(--danger-soft); color: var(--danger); font-size: 14px; font-weight: 600; }
 .skeleton { color: transparent !important; background: var(--fill); border-radius: 8px; }
 
@@ -278,7 +294,7 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
   *, *::before, *::after { transition-duration: .01ms !important; }
   .reveal { animation-name: fade; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-  .icon-btn.spin svg { animation: none; }
+  .icon-btn.spin svg, .spinner { animation-duration: 2s; }
 }
 
 /* responsive */
@@ -290,8 +306,7 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
   main { padding: 24px 16px 40px; }
   .facts { grid-template-columns: 1fr 1fr; }
   .card { padding: 16px; }
-  .card-head { flex-wrap: wrap; row-gap: 8px; }
-  .card-head .pill { order: 3; margin-left: 52px; }
+  .card-head .actions { order: 3; margin-left: 52px; }
   .page-head .t-large { font-size: 28px; }
 }
 </style>
@@ -339,7 +354,6 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
         <div class="group-head">
           <span class="bot-icon eneba" style="width:32px;height:32px;border-radius:8px"><svg class="i sm"><use href="#i-game"/></svg></span>
           <legend class="t-head" style="padding:0">Eneba</legend>
-          <button type="button" class="btn btn-ghost" id="run-eneba"><svg class="i sm"><use href="#i-play"/></svg>Check now</button>
         </div>
         <div class="field" data-key="eneba.threshold">
           <label for="threshold">Alert threshold</label>
@@ -357,7 +371,7 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
         <div class="group-head">
           <span class="bot-icon amazon" style="width:32px;height:32px;border-radius:8px"><svg class="i sm"><use href="#i-box"/></svg></span>
           <legend class="t-head" style="padding:0">Amazon</legend>
-          <button type="button" class="btn btn-ghost" id="run-amazon"><svg class="i sm"><use href="#i-play"/></svg>Run test</button>
+          <button type="button" class="btn btn-ghost" id="test-amazon" title="Checks once and sends each product's status to Telegram"><svg class="i sm"><use href="#i-bell"/></svg>Test Telegram</button>
         </div>
         <div class="row2">
           <div class="field" data-key="amazon.start_time"><label for="start_time">Start</label><input id="start_time" name="start_time" type="time"></div>
@@ -419,6 +433,8 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
     </section>
   </main>
 </div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = (s) => document.querySelector(s);
@@ -524,7 +540,7 @@ function renderEneba() {
     <div class="card-head">
       <span class="bot-icon eneba">${icon("game")}</span>
       <div><h3 class="t-head" id="eneba-title">Eneba · PSN India</h3><div class="t-cap">Best value tile</div></div>
-      ${status}
+      <div class="actions">${status}${runButton("eneba")}</div>
     </div>
     ${body}
     <dl class="facts">
@@ -547,8 +563,8 @@ function renderAmazon() {
   $("#amazon-card").innerHTML = `
     <div class="card-head">
       <span class="bot-icon amazon">${icon("box")}</span>
-      <div><h3 class="t-head" id="amazon-title">Amazon India · Gift cards</h3><div class="t-cap">Restock watch on this PC</div></div>
-      ${s ? pill("accent", `${s.start_time}–${s.end_time} · every ${s.interval}s`) : ""}
+      <div><h3 class="t-head" id="amazon-title">Amazon India · Gift cards</h3><div class="t-cap">${s ? `${s.start_time}–${s.end_time} · every ${s.interval}s` : "Restock watch on this PC"}</div></div>
+      <div class="actions">${runButton("amazon")}</div>
     </div>
     <div class="products">${rows}</div>
     <dl class="facts">
@@ -593,7 +609,7 @@ function renderAudit() {
     <thead><tr><th>Time</th><th>Best value</th><th class="r">Price</th><th class="r">Rate</th><th class="r">Result</th></tr></thead>
     <tbody>${[...eneba].reverse().map((e) => e.error
       ? `<tr><td>${when(e.ts)}</td><td colspan="3" dir="auto">${esc(e.error)}</td><td class="r">${pill("danger", "Error", "warn")}</td></tr>`
-      : `<tr><td>${when(e.ts)}</td><td>${num(e.inr, 0)} INR</td><td class="r">₪${num(e.ils)}</td><td class="r strong">${num(e.ratio)}</td>
+      : `<tr><td>${when(e.ts)}${e.manual ? '<span class="tag">Manual</span>' : ""}</td><td>${num(e.inr, 0)} INR</td><td class="r">₪${num(e.ils)}</td><td class="r strong">${num(e.ratio)}</td>
          <td class="r">${e.alert ? pill("success", "Alert sent", "bell") : pill("neutral", `Below ${e.threshold}`)}</td></tr>`).join("")}
     </tbody></table></div>`
     : `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba runs in the last 24 hours</div><div class="t-cap">It runs every 12 hours, or use “Check now”.</div></div>`;
@@ -618,7 +634,7 @@ function renderAudit() {
   }).join("");
   const rows = [...amazon].reverse().slice(0, 500).map((e) => {
     const st = STATUS[e.status] || STATUS.unknown;
-    return `<tr><td>${when(e.ts).replace(/(\d\d:\d\d)$/, clock(e.ts))}${e.test ? '<span class="tag">Test</span>' : ""}</td>
+    return `<tr><td>${when(e.ts).replace(/(\d\d:\d\d)$/, clock(e.ts))}${e.test ? '<span class="tag">Test</span>' : e.manual ? '<span class="tag">Manual</span>' : ""}</td>
       <td dir="auto" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(shortName(e))}</td>
       <td>${pill(st.tone, st.label, st.icon)}</td><td class="r">${esc(e.price || "—")}</td></tr>`;
   }).join("");
@@ -685,14 +701,69 @@ form.addEventListener("submit", async (ev) => {
   }
 });
 
-async function action(btn, path) {
-  btn.disabled = true;
-  try { setStatus("ok", (await api(path, { method: "POST" })).message); }
-  catch (e) { setStatus("bad", e.message); }
-  finally { setTimeout(() => (btn.disabled = false), 3000); }
+// ---------- run now ----------
+const runs = {};  // bot -> { since: ISO time the run was requested, test: bool }
+const isRunning = (bot) => !!runs[bot] || !!data?.running?.[bot];
+
+function runButton(bot) {
+  return isRunning(bot)
+    ? `<button class="btn btn-run" data-run="${bot}" aria-busy="true" disabled><span class="spinner" aria-hidden="true"></span>Checking…</button>`
+    : `<button class="btn btn-run" data-run="${bot}">${icon("play", "i sm")}Run now</button>`;
 }
-$("#run-eneba").addEventListener("click", (e) => action(e.currentTarget, "/api/run/eneba"));
-$("#run-amazon").addEventListener("click", (e) => action(e.currentTarget, "/api/run/amazon-test"));
+
+let toastTimer;
+function toast(tone, ic, text) {
+  const el = $("#toast");
+  el.className = `toast ${tone} show`;
+  el.innerHTML = `${icon(ic)}<span dir="auto">${esc(text)}</span>`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 6000);
+}
+
+function resultMessage(bot, since) {
+  const evs = (data.audit[bot] || []).filter((e) => e.ts >= since);
+  if (!evs.length) return ["danger", "warn", `${bot === "eneba" ? "Eneba" : "Amazon"} check finished without a result. See ${bot}_bot.log.`];
+  if (bot === "eneba") {
+    const e = evs.at(-1);
+    if (e.error) return ["danger", "warn", `Eneba: ${e.error}`];
+    return e.alert
+      ? ["success", "up", `Eneba: ${num(e.ratio)} INR per ₪1. Alert sent to Telegram.`]
+      : ["neutral", "check", `Eneba: ${num(e.ratio)} INR per ₪1, below ${e.threshold}.`];
+  }
+  const inStock = evs.filter((e) => e.status === "in").length;
+  const blocked = evs.filter((e) => e.status === "captcha" || e.status === "error").length;
+  if (inStock) return ["success", "check", `Amazon: ${inStock} of ${evs.length} in stock. Alert sent to Telegram.`];
+  if (blocked) return ["danger", "shield", `Amazon: ${blocked} of ${evs.length} checks were blocked or failed.`];
+  return ["neutral", "check", `Amazon: checked ${evs.length} products, none in stock.`];
+}
+
+async function startRun(bot, path, test = false) {
+  if (isRunning(bot)) return;
+  const since = new Date(Date.now() - 2000).toISOString().replace(/\.\d+Z$/, "+00:00");
+  runs[bot] = { since, test };
+  render();
+  try {
+    const res = await api(path, { method: "POST" });
+    if (!res.started) { toast("neutral", "help", res.message); }
+  } catch (e) {
+    delete runs[bot]; render(); toast("danger", "warn", e.message); return;
+  }
+  // Poll until the server reports the process has finished, then show the result.
+  const poll = async () => {
+    await loadData();
+    if (data?.running?.[bot]) return setTimeout(poll, 2000);
+    const run = runs[bot]; delete runs[bot]; render();
+    if (run.test) toast("neutral", "bell", "Amazon test messages sent to Telegram.");
+    else toast(...resultMessage(bot, run.since));
+  };
+  setTimeout(poll, 2000);
+}
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-run]");
+  if (b) startRun(b.dataset.run, `/api/run/${b.dataset.run}`);
+});
+$("#test-amazon").addEventListener("click", () => startRun("amazon", "/api/run/amazon-test", true));
 $("#refresh").addEventListener("click", () => { loadData(); loadSettings(); });
 
 // ---------- tabs ----------

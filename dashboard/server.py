@@ -4,8 +4,9 @@ Local dashboard for the price bots. Serves index.html and a small JSON API on 12
   GET  /api/data?hours=24   latest status, alerts (7 days) and audit events (last `hours`)
   GET  /api/settings        current settings + next scheduled runs
   POST /api/settings        apply settings (GitHub variables / settings.json / scheduled task)
-  POST /api/run/eneba       start the GitHub workflow now
-  POST /api/run/amazon-test run the Amazon bot once in test mode
+  POST /api/run/eneba       run the Eneba check once on this PC now
+  POST /api/run/amazon      run the Amazon check once on this PC now (normal alerts)
+  POST /api/run/amazon-test run the Amazon bot once in test mode (status messages to Telegram)
 """
 
 import os
@@ -72,19 +73,21 @@ def eneba_events():
         return [], f"Could not load Eneba history from GitHub: {msg[:160]}"
 
 
-def amazon_events():
-    path = history_path("amazon")
-    return parse_events(path.read_text(encoding="utf-8")) if path.exists() else []
-
-
 def since(events, hours):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     return [e for e in events if datetime.fromisoformat(e["ts"]) >= cutoff]
 
 
+def local_events(bot):
+    path = history_path(bot)
+    return parse_events(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
 def get_data(hours):
-    eneba, eneba_error = eneba_events()
-    amazon = amazon_events()
+    github_eneba, eneba_error = eneba_events()
+    # Runs started with "Run now" happen on this PC and are only in the local file.
+    eneba = sorted(github_eneba + local_events("eneba"), key=lambda e: e["ts"])
+    amazon = local_events("amazon")
     latest_amazon = {}
     for e in amazon:
         if e.get("status") != "error" or e["link"] not in latest_amazon:
@@ -92,6 +95,7 @@ def get_data(hours):
     return {
         "now": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "errors": {"eneba": eneba_error},
+        "running": {"eneba": is_running("eneba"), "amazon": is_running("amazon")},
         "latest": {
             "eneba": eneba[-1] if eneba else None,
             "amazon": [latest_amazon.get(u) or {"link": u} for u in amazon_settings()["urls"]],
@@ -204,18 +208,43 @@ def apply_settings(body):
 
 # ---------- actions ----------
 
+_procs = {}  # job name -> Popen, for jobs started from the dashboard
+
+
+def is_running(job):
+    p = _procs.get(job)
+    return p is not None and p.poll() is None
+
+
+def start_bot(job, script, env):
+    """Run a bot script once on this PC in the background (one instance per job)."""
+    if is_running(job):
+        return False
+    python = ROOT / ".venv" / "Scripts" / "python.exe"
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", **env}
+    with open(ROOT / f"{script.removesuffix('.py')}.log", "a", encoding="utf-8") as log:
+        _procs[job] = subprocess.Popen([str(python if python.exists() else sys.executable), script], cwd=ROOT,
+                                       env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+    return True
+
+
 def run_eneba():
-    run(["gh", "workflow", "run", "eneba-check.yml", "--repo", REPO])
-    return {"ok": True, "message": "Eneba check started on GitHub. Results appear in 1–2 minutes."}
+    s = get_settings()["eneba"]
+    started = start_bot("eneba", "eneba_bot.py", {
+        "MANUAL_RUN": "true", "THRESHOLD": f"{s['threshold']:g}", "PRODUCT_URL": s["product_url"], "ALWAYS_NOTIFY": "false",
+    })
+    return {"ok": True, "started": started, "message": "Checking Eneba…" if started else "Eneba check is already running."}
+
+
+def run_amazon():
+    started = start_bot("amazon", "amazon_bot.py", {"MANUAL_RUN": "true", "RUN_ONCE": "true"})
+    return {"ok": True, "started": started, "message": "Checking Amazon…" if started else "Amazon check is already running."}
 
 
 def run_amazon_test():
-    python = ROOT / ".venv" / "Scripts" / "python.exe"
-    env = {**os.environ, "TEST_MODE": "true", "PYTHONIOENCODING": "utf-8"}
-    with open(ROOT / "amazon_bot.log", "a", encoding="utf-8") as log:
-        subprocess.Popen([str(python if python.exists() else sys.executable), "amazon_bot.py"],
-                         cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
-    return {"ok": True, "message": "Amazon test started. Results appear in about 30 seconds."}
+    started = start_bot("amazon", "amazon_bot.py", {"TEST_MODE": "true"})
+    return {"ok": True, "started": started,
+            "message": "Sending Amazon test messages to Telegram…" if started else "An Amazon check is already running."}
 
 
 # ---------- http ----------
@@ -260,6 +289,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {
             "/api/settings": lambda: apply_settings(body),
             "/api/run/eneba": run_eneba,
+            "/api/run/amazon": run_amazon,
             "/api/run/amazon-test": run_amazon_test,
         }
         fn = routes.get(urlparse(self.path).path)

@@ -13,6 +13,7 @@ Config (environment variables override settings.json, which the dashboard edits)
   END_TIME      - local Israel time to stop, HH:MM (default 09:15)
   INTERVAL      - seconds between checks (default 25)
   TEST_MODE     - "true" = check once, send the status of each product, exit
+  RUN_ONCE      - "true" = check each product once with normal alerts, exit
 
 Every check is appended to data/amazon_history.jsonl for the dashboard.
 """
@@ -37,6 +38,7 @@ URLS = [u.strip() for u in re.split(r"[,\n]", os.getenv("AMAZON_URLS") or "") if
 END_TIME = os.getenv("END_TIME") or SETTINGS["end_time"]
 INTERVAL = int(os.getenv("INTERVAL") or SETTINGS["interval"])
 TEST_MODE = (os.getenv("TEST_MODE") or "").lower() == "true"
+RUN_ONCE = TEST_MODE or (os.getenv("RUN_ONCE") or "").lower() == "true"
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -165,7 +167,7 @@ def main():
                 record_event("amazon", {"link": u, "url": r["url"], "product": r["title"], "status": r["status"],
                                         "price": r["price"], "alert": alert, "test": TEST_MODE})
 
-            if TEST_MODE or past_end():
+            if RUN_ONCE or past_end():
                 break
             time.sleep(INTERVAL + random.uniform(-5, 5))
 

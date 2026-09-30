@@ -22,7 +22,7 @@ import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
-from botlib import ENEBA_DEFAULT_URL, record_event
+from botlib import ENEBA_DEFAULT_URL, record_event, prune_file, history_path
 
 PRODUCT_URL = os.getenv("PRODUCT_URL") or ENEBA_DEFAULT_URL
 THRESHOLD = float(os.getenv("THRESHOLD", "24") or 24)
@@ -124,6 +124,7 @@ def send_telegram(msg: str):
 
 def main():
     event = run_check()
+    prune_file(history_path("eneba"), days=30)
     record_event("eneba", {"threshold": THRESHOLD, "url": PRODUCT_URL, **event})
     if event.get("error"):
         sys.exit(1)

@@ -7,6 +7,7 @@ settings.json (local only, edited from the dashboard):
 History files live in data/<bot>_history.jsonl, one JSON event per line, "ts" in UTC ISO format.
 """
 
+import os
 import json
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -47,6 +48,8 @@ def history_path(bot: str) -> Path:
 def record_event(bot: str, event: dict):
     DATA_DIR.mkdir(exist_ok=True)
     event = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "bot": bot, **event}
+    if os.getenv("MANUAL_RUN") == "true":  # started from the dashboard's "Run now"
+        event["manual"] = True
     with open(history_path(bot), "a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
