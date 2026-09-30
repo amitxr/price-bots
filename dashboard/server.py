@@ -190,7 +190,8 @@ def apply_settings(body):
         run(["gh", "variable", "set", "THRESHOLD", "--repo", REPO, "--body", f"{threshold:g}"])
     if product_url != current["eneba"]["product_url"]:
         run(["gh", "variable", "set", "PRODUCT_URL", "--repo", REPO, "--body", product_url])
-    _cache.pop("eneba_vars", None)
+    # GitHub may return the old value for a few seconds after a set, so cache what we wrote.
+    _cache["eneba_vars"] = (time.time(), {"threshold": threshold, "product_url": product_url})
 
     settings = load_settings()
     settings["amazon"] = {"urls": urls, "start_time": start, "end_time": end, "interval": interval}
