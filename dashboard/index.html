@@ -570,7 +570,7 @@ function renderAmazon() {
     <div class="card-head">
       <span class="bot-icon amazon">${icon("box")}</span>
       <div><h3 class="t-head" id="amazon-title">Amazon India · Gift cards</h3><div class="t-cap">${s ? `${s.start_time}–${s.end_time} · every ${s.interval}s` : "Restock watch on this PC"}</div></div>
-      <div class="actions">${runButton("amazon")}</div>
+      <div class="actions">${data.watch_active ? pill("success", "Watching live", "overview") : ""}${runButton("amazon")}</div>
     </div>
     <div class="products">${rows}</div>
     <dl class="facts">

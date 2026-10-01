@@ -22,7 +22,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from botlib import (  # noqa: E402
-    ROOT, ENEBA_DEFAULT_URL, amazon_settings, load_settings, save_settings, history_path, parse_events,
+    ROOT, ENEBA_DEFAULT_URL, WATCH_HEARTBEAT, amazon_settings, load_settings, save_settings, history_path, parse_events,
 )
 
 HOST, PORT = "127.0.0.1", int(os.getenv("DASHBOARD_PORT") or 8765)
@@ -97,6 +97,7 @@ def get_data(hours):
         "now": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "errors": {"eneba": eneba_error},
         "running": {"eneba": is_running("eneba"), "amazon": is_running("amazon")},
+        "watch_active": WATCH_HEARTBEAT.exists() and time.time() - WATCH_HEARTBEAT.stat().st_mtime < 120,
         "latest": {
             "eneba": eneba[-1] if eneba else None,
             "amazon": [latest_amazon.get(u) or {"link": u} for u in amazon_settings()["urls"]],

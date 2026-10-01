@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 SETTINGS_FILE = ROOT / "settings.json"
+WATCH_HEARTBEAT = DATA_DIR / "amazon_watch.heartbeat"  # touched every round by the morning watch
 
 ENEBA_DEFAULT_URL = "https://www.eneba.com/psn-playstation-network-card-rs-3000-in-psn-key-india"
 AMAZON_DEFAULTS = {

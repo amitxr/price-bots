@@ -17,7 +17,8 @@ Config (environment variables override settings.json, which the dashboard edits)
 
 Command line:
   --background  - the all-day check (run by Task Scheduler every few minutes):
-                  one check, skipped while the morning window is running
+                  one check, skipped while the morning watch is running
+                  (it takes over if the watch stops early)
 
 Every check is appended to data/amazon_history.jsonl for the dashboard. Restock
 alerts compare against the last known status in that file, so a product that
@@ -36,7 +37,10 @@ from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
-from botlib import amazon_settings, record_event, prune_file, history_path, parse_events
+from botlib import ROOT, amazon_settings, record_event, prune_file, history_path, parse_events, WATCH_HEARTBEAT
+
+if sys.stdout is None:  # started with pythonw by Task Scheduler: no console, so log to a file
+    sys.stdout = sys.stderr = open(ROOT / "amazon_bot.log", "a", encoding="utf-8", buffering=1)
 
 BACKGROUND = "--background" in sys.argv
 if BACKGROUND:
@@ -45,7 +49,6 @@ if BACKGROUND:
 
 TZ = ZoneInfo("Asia/Jerusalem")
 SETTINGS = amazon_settings()
-START_TIME = SETTINGS["start_time"]
 URLS = [u.strip() for u in re.split(r"[,\n]", os.getenv("AMAZON_URLS") or "") if u.strip()] or SETTINGS["urls"]
 END_TIME = os.getenv("END_TIME") or SETTINGS["end_time"]
 INTERVAL = int(os.getenv("INTERVAL") or SETTINGS["interval"])
@@ -97,8 +100,12 @@ def past_end() -> bool:
     return (now.hour, now.minute) >= (h, m)
 
 
-def in_morning_window() -> bool:
-    return START_TIME <= f"{datetime.now(TZ):%H:%M}" < END_TIME
+def watch_alive() -> bool:
+    """True while the morning watch loop is running (it touches the heartbeat every round)."""
+    try:
+        return time.time() - WATCH_HEARTBEAT.stat().st_mtime < max(120, INTERVAL * 3)
+    except FileNotFoundError:
+        return False
 
 
 def last_known_status() -> dict:
@@ -148,8 +155,9 @@ def check(page, url: str) -> dict:
 
 def main():
     status_he = {"in": "✅ במלאי", "out": "❌ אזל", "captcha": "🤖 אמזון ביקשה CAPTCHA", "unknown": "❓ לא זוהה"}
-    if BACKGROUND and in_morning_window():
+    if BACKGROUND and watch_alive():
         return  # the morning watch is already checking every few seconds
+    watching = not RUN_ONCE  # the long-running morning loop
     captcha_streak = 0
     captcha_warned = False
     errors = 0
@@ -171,6 +179,9 @@ def main():
         page = ctx.new_page()
 
         while True:
+            if watching:
+                WATCH_HEARTBEAT.parent.mkdir(exist_ok=True)
+                WATCH_HEARTBEAT.touch()
             for u in URLS:
                 try:
                     r = check(page, u)
@@ -183,6 +194,11 @@ def main():
                         send_telegram(f"⚠️ בוט אמזון: 10 שגיאות ברצף בטעינת הדף ({e})")
                     record_event("amazon", {"link": u, "status": "error", "error": str(e)[:200],
                                             "alert": alert, "test": TEST_MODE})
+                    if "crashed" in str(e) or "closed" in str(e):
+                        try:  # a dead tab fails every later check, so open a fresh one
+                            page = ctx.new_page()
+                        except Exception:
+                            return  # the browser itself is gone; the all-day check takes over
                     continue
 
                 print(f"{datetime.now(TZ):%H:%M:%S} {r['status']:8} {r['price']:>10}  {r['title']}")
