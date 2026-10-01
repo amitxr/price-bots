@@ -224,8 +224,11 @@ section { scroll-margin-top: 24px; }
 .alert-row:first-child { padding-top: 0; } .alert-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .alert-row .what { font-weight: 700; font-size: 14px; }
 .alert-row .detail { font-size: 13px; color: var(--label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.alert-row .alert-link { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--accent); text-decoration: none; }
-.alert-row .alert-link:hover { text-decoration: underline; }
+.alert-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 8px; }
+.alert-link { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; font-size: 13px; font-weight: 700; color: var(--accent); text-decoration: none; }
+.alert-link:hover { text-decoration: underline; }
+.alert-link.primary { padding: 0 16px; border-radius: 999px; background: var(--accent); color: var(--on-accent); }
+.alert-link.primary:hover { background: var(--accent-hover); text-decoration: none; }
 .alert-row time { text-align: right; font-size: 13px; font-weight: 600; color: var(--label-2); white-space: nowrap; }
 .alert-row time small { display: block; font-size: 12px; font-weight: 500; color: var(--label-3); }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 16px; text-align: center; color: var(--label-3); }
@@ -481,6 +484,13 @@ function ago(ts) {
   return `${Math.round(s / 86400)} d ago`;
 }
 const shortName = (e) => e?.product || e?.link || "Amazon product";
+// One-tap link: adds the product to the cart in the viewer's own (logged-in) Amazon session.
+const cartLink = (e) => {
+  const asin = e?.asin || (e?.url || "").match(/\/dp\/([A-Z0-9]{10})/)?.[1];
+  return asin ? `https://www.amazon.in/gp/aws/cart/add.html?ASIN.1=${asin}&Quantity.1=1` : null;
+};
+const linkBtn = (href, label, primary) =>
+  `<a class="alert-link${primary ? " primary" : ""}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}${primary ? "" : icon("chev", "i sm")}</a>`;
 
 // ---------- state ----------
 let data = null, settings = null, dirty = false;
@@ -566,6 +576,7 @@ function renderAmazon() {
       <div class="name" dir="auto" title="${esc(shortName(e))}"><a href="${esc(e.url || e.link)}" target="_blank" rel="noopener">${esc(shortName(e))}</a></div>
       ${st ? pill(st.tone, st.label, st.icon) : pill("neutral", "Not checked yet")}
       <div class="meta t-cap">${e.ts ? `${esc(e.price || "")}${e.price ? " · " : ""}checked ${ago(e.ts)}` : esc(e.link)}</div>
+      ${e.status === "in" && cartLink(e) ? `<div class="alert-links" style="grid-column:2;justify-self:end">${linkBtn(cartLink(e), "Add to cart", true)}</div>` : ""}
     </div>`;
   }).join("");
   $("#amazon-card").innerHTML = `
@@ -585,9 +596,10 @@ function renderAmazon() {
 function alertInfo(e) {
   if (e.bot === "eneba") {
     if (e.error) return { ic: "warn", tone: "danger", what: "Eneba check failed", detail: e.error };
-    return { ic: "up", tone: "success", what: `Eneba rate ${num(e.ratio)} INR per ₪1`, detail: `${num(e.inr, 0)} INR for ₪${num(e.ils)} · threshold ${e.threshold}`, link: e.url, cta: "Open Eneba" };
+    return { ic: "up", tone: "success", what: `Eneba rate ${num(e.ratio)} INR per ₪1`, detail: `${num(e.inr, 0)} INR for ₪${num(e.ils)} · threshold ${e.threshold}`, links: [[e.url, "Open Eneba"]] };
   }
-  if (e.status === "in") return { ic: "check", tone: "success", what: "Back in stock on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}`, link: e.url || e.link, cta: "Buy on Amazon" };
+  if (e.status === "in") return { ic: "check", tone: "success", what: "Back in stock on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}`,
+    links: [[cartLink(e), "Add to cart", true], [e.url || e.link, "View product"]] };
   if (e.status === "captcha") return { ic: "shield", tone: "warning", what: "Amazon is showing CAPTCHAs", detail: "Checks are being blocked" };
   return { ic: "warn", tone: "danger", what: "Amazon page keeps failing", detail: e.error || shortName(e) };
 }
@@ -603,7 +615,7 @@ function renderAlerts() {
     return `<div class="alert-row">
       <span class="bot-icon" style="background:var(--${a.tone}-soft);color:var(--${a.tone})">${icon(a.ic)}</span>
       <div style="min-width:0"><div class="what">${esc(a.what)}</div><div class="detail" dir="auto">${esc(a.detail)}</div>
-        ${a.link ? `<a class="alert-link" href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.cta)} ${icon("chev", "i sm")}</a>` : ""}</div>
+        ${a.links ? `<div class="alert-links">${a.links.filter(([href]) => href).map(([href, label, primary]) => linkBtn(href, label, primary)).join("")}</div>` : ""}</div>
       <time datetime="${e.ts}">${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}<small>${when(e.ts).split(" ")[0] === "Today" ? "Today" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</small></time>
     </div>`;
   }).join("") : `<div class="empty">${icon("bell")}<div class="t-head">No alerts in the last 7 days</div><div class="t-cap">Restocks and good Eneba rates will show up here.</div></div>`;

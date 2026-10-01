@@ -27,6 +27,7 @@ stays in stock is not reported again on every run.
 
 import os
 import re
+import json
 import sys
 import time
 import random
@@ -79,19 +80,38 @@ PRICE_SELECTORS = [
 ]
 
 
-def send_telegram(msg: str):
+def send_telegram(msg: str, buttons=None):
+    """Send a message; `buttons` is a list of (label, url) shown as link buttons under it."""
     print(msg)
     if not (TG_TOKEN and TG_CHAT):
         return
-    body = urllib.parse.urlencode(
-        {"chat_id": TG_CHAT, "text": msg, "disable_web_page_preview": "true"}
-    ).encode()
+    fields = {"chat_id": TG_CHAT, "text": msg, "disable_web_page_preview": "true"}
+    if buttons:
+        fields["reply_markup"] = json.dumps(
+            {"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons if url]]}
+        )
+    body = urllib.parse.urlencode(fields).encode()
     try:
         urllib.request.urlopen(
             f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", data=body, timeout=20
         )
     except Exception as e:
         print(f"telegram error: {e}")
+
+
+def asin_of(url: str):
+    m = re.search(r"/dp/([A-Z0-9]{10})", url or "")
+    return m.group(1) if m else None
+
+
+def cart_link(url: str):
+    """One-tap link that adds the product to the cart in the user's own Amazon app/browser."""
+    asin = asin_of(url)
+    return f"https://www.amazon.in/gp/aws/cart/add.html?ASIN.1={asin}&Quantity.1=1" if asin else None
+
+
+def product_buttons(r: dict):
+    return [("🛒 הוסף לעגלה", cart_link(r["url"])), ("פתח מוצר", r["url"])]
 
 
 def past_end() -> bool:
@@ -206,7 +226,8 @@ def main():
 
                 if TEST_MODE:
                     send_telegram(
-                        f"🧪 בדיקת בוט אמזון\n{r['title']}\nמצב: {status_he[r['status']]} {r['price']}\n{r['url']}"
+                        f"🧪 בדיקת בוט אמזון\n{r['title']}\nמצב: {status_he[r['status']]} {r['price']}\n{r['url']}",
+                        buttons=product_buttons(r),
                     )
                 elif r["status"] == "captcha":
                     captcha_streak += 1
@@ -216,12 +237,14 @@ def main():
                 else:
                     captcha_streak = 0
                     if r["status"] == "in" and last[u] != "in":
-                        send_telegram(f"🚨 חזר למלאי באמזון!\n{r['title']}\n{r['price']}\n{r['url']}")
+                        send_telegram(f"🚨 חזר למלאי באמזון!\n{r['title']}\n{r['price']}\n{r['url']}",
+                                      buttons=product_buttons(r))
                         alert = True
                     if r["status"] in ("in", "out"):
                         last[u] = r["status"]
 
-                record_event("amazon", {"link": u, "url": r["url"], "product": r["title"], "status": r["status"],
+                record_event("amazon", {"link": u, "url": r["url"], "asin": asin_of(r["url"]),
+                                        "product": r["title"], "status": r["status"],
                                         "price": r["price"], "alert": alert, "test": TEST_MODE})
 
             if RUN_ONCE or past_end():
