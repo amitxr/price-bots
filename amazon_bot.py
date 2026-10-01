@@ -105,13 +105,14 @@ def asin_of(url: str):
 
 
 def cart_link(url: str):
-    """One-tap link that adds the product to the cart in the user's own Amazon app/browser."""
+    """Link that adds the product to the cart (needs a logged-in browser; the Amazon app may ignore it)."""
     asin = asin_of(url)
-    return f"https://www.amazon.in/gp/aws/cart/add.html?ASIN.1={asin}&Quantity.1=1" if asin else None
+    return f"https://www.amazon.in/associates/addtocart?ASIN.1={asin}&Quantity.1=1" if asin else None
 
 
 def product_buttons(r: dict):
-    return [("🛒 הוסף לעגלה", cart_link(r["url"])), ("פתח מוצר", r["url"])]
+    # The product page is the reliable one: on a phone it opens the logged-in Amazon app, one tap from Buy Now.
+    return [("🛍️ פתח לקנייה", r["url"]), ("🛒 הוסף לעגלה", cart_link(r["url"]))]
 
 
 def past_end() -> bool:
