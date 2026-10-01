@@ -619,6 +619,8 @@ function alertInfo(e) {
   }
   if (e.status === "in") return { ic: "check", tone: "success", what: "Back in stock on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}`,
     links: [[e.url || e.link, "Open to buy", true], [cartLink(e), "Add to cart"]] };
+  if (e.status === "out") return { ic: "x", tone: "neutral", what: "Sold out again on Amazon",
+    detail: `${shortName(e)}${e.in_minutes != null ? ` · was available ${e.in_minutes} min` : ""}`, links: [[e.url || e.link, "View product"]] };
   if (e.status === "captcha") return { ic: "shield", tone: "warning", what: "Amazon is showing CAPTCHAs", detail: "Checks are being blocked" };
   return { ic: "warn", tone: "danger", what: "Amazon page keeps failing", detail: e.error || shortName(e) };
 }

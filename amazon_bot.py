@@ -20,9 +20,10 @@ Command line:
                   one check, skipped while the morning watch is running
                   (it takes over if the watch stops early)
 
-Every check is appended to data/amazon_history.jsonl for the dashboard. Restock
-alerts compare against the last known status in that file, so a product that
-stays in stock is not reported again on every run.
+Every check is appended to data/amazon_history.jsonl for the dashboard. Alerts
+compare against the last known status in that file: one message when a product
+comes back in stock, and one when it sells out again (with how long it lasted).
+A product that stays in stock is not reported again on every run.
 """
 
 import os
@@ -142,14 +143,19 @@ def captcha_warned_recently(hours: int = 6) -> bool:
 
 
 def last_known_status() -> dict:
-    """Last real in/out status per product link, from the history file."""
+    """Last real in/out status per product link, and since when (UTC ISO), from the history file."""
     path = history_path("amazon")
     last = {}
     if path.exists():
         for e in parse_events(path.read_text(encoding="utf-8")):
             if e.get("status") in ("in", "out") and not e.get("test"):
-                last[e["link"]] = e["status"]
+                if last.get(e["link"], (None,))[0] != e["status"]:
+                    last[e["link"]] = (e["status"], e["ts"])
     return last
+
+
+def minutes_since(ts) -> int:
+    return round((datetime.now(ZoneInfo("UTC")) - datetime.fromisoformat(ts)).total_seconds() / 60) if ts else 0
 
 
 def check(page, url: str) -> dict:
@@ -196,7 +202,8 @@ def main():
     errors = 0
     prune_file(history_path("amazon"), days=7)
     known = last_known_status()
-    last = {u: known.get(u) for u in URLS}
+    last = {u: known.get(u, (None,))[0] for u in URLS}
+    since = {u: known.get(u, (None, None))[1] for u in URLS}  # when the current status started
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -236,6 +243,7 @@ def main():
 
                 print(f"{datetime.now(TZ):%H:%M:%S} {r['status']:8} {r['price']:>10}  {r['title']}")
                 alert = False
+                in_minutes = None  # set when a product sells out again: how long it was available
 
                 if TEST_MODE:
                     send_telegram(
@@ -253,12 +261,21 @@ def main():
                         send_telegram(f"🚨 חזר למלאי באמזון!\n{r['title']}\n{r['price']}\n{r['url']}",
                                       buttons=product_buttons(r))
                         alert = True
-                    if r["status"] in ("in", "out"):
+                    elif r["status"] == "out" and last[u] == "in":
+                        in_minutes = minutes_since(since[u])
+                        started = f" (מ-{datetime.fromisoformat(since[u]).astimezone(TZ):%H:%M})" if since[u] else ""
+                        send_telegram(f"❌ אזל שוב במלאי באמזון\n{r['title']}\n"
+                                      f"היה זמין {in_minutes} דקות{started}\n{r['url']}",
+                                      buttons=[("פתח מוצר", r["url"])])
+                        alert = True
+                    if r["status"] in ("in", "out") and r["status"] != last[u]:
                         last[u] = r["status"]
+                        since[u] = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
 
                 record_event("amazon", {"link": u, "url": r["url"], "asin": asin_of(r["url"]),
                                         "product": r["title"], "status": r["status"],
-                                        "price": r["price"], "alert": alert, "test": TEST_MODE})
+                                        "price": r["price"], "alert": alert, "test": TEST_MODE,
+                                        **({"in_minutes": in_minutes} if in_minutes is not None else {})})
 
             if RUN_ONCE or past_end():
                 break
