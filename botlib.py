@@ -27,6 +27,22 @@ AMAZON_DEFAULTS = {
 }
 
 
+def env(name: str, default: str = "") -> str:
+    """Environment variable, falling back to the saved Windows user variable.
+
+    Processes started before the variable was saved (e.g. the dashboard) don't see it in os.environ.
+    """
+    value = os.getenv(name)
+    if not value and os.name == "nt":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                value = winreg.QueryValueEx(key, name)[0]
+        except OSError:
+            pass
+    return value or default
+
+
 def load_settings() -> dict:
     try:
         return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))

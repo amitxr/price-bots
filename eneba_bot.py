@@ -22,13 +22,13 @@ import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
-from botlib import ENEBA_DEFAULT_URL, record_event, prune_file, history_path
+from botlib import ENEBA_DEFAULT_URL, env, record_event, prune_file, history_path
 
 PRODUCT_URL = os.getenv("PRODUCT_URL") or ENEBA_DEFAULT_URL
 THRESHOLD = float(os.getenv("THRESHOLD", "24") or 24)
 ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "false").lower() == "true"
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
+TG_TOKEN = env("TELEGRAM_BOT_TOKEN")
+TG_CHAT = env("TELEGRAM_CHAT_ID")
 
 SYMBOLS = {"₪": "ILS", "$": "USD", "€": "EUR", "£": "GBP"}
 INR_LINE = re.compile(r"^([\d,]+)\s*INR$")

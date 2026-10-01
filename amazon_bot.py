@@ -37,7 +37,7 @@ from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
-from botlib import ROOT, amazon_settings, record_event, prune_file, history_path, parse_events, WATCH_HEARTBEAT
+from botlib import ROOT, env, amazon_settings, record_event, prune_file, history_path, parse_events, WATCH_HEARTBEAT
 
 if sys.stdout is None:  # started with pythonw by Task Scheduler: no console, so log to a file
     sys.stdout = sys.stderr = open(ROOT / "amazon_bot.log", "a", encoding="utf-8", buffering=1)
@@ -54,8 +54,8 @@ END_TIME = os.getenv("END_TIME") or SETTINGS["end_time"]
 INTERVAL = int(os.getenv("INTERVAL") or SETTINGS["interval"])
 TEST_MODE = (os.getenv("TEST_MODE") or "").lower() == "true"
 RUN_ONCE = TEST_MODE or (os.getenv("RUN_ONCE") or "").lower() == "true"
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
+TG_TOKEN = env("TELEGRAM_BOT_TOKEN")
+TG_CHAT = env("TELEGRAM_CHAT_ID")
 
 BUY_SELECTORS = [
     "#buy-now-button",
