@@ -270,13 +270,11 @@ td.strong { font-weight: 700; }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--label-2); }
 .legend i { width: 10px; height: 10px; border-radius: 3px; }
-details { margin-top: 16px; }
-summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-weight: 700; font-size: 14px; color: var(--accent); list-style: none; }
-summary::-webkit-details-marker { display: none; }
-summary svg { transition: transform .2s var(--ease); }
-details[open] summary svg { transform: rotate(90deg); }
-details .table-wrap { max-height: 420px; overflow-y: auto; margin-top: 8px; }
-details thead th { position: sticky; top: 0; background: var(--surface-2); padding-top: 8px; }
+/* lists capped to the latest 5 rows; the rest scrolls inside the box */
+.capped { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--separator) transparent; }
+.capped thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-2); }
+.cap-hint { margin-top: 12px; }
+.sub-head { margin: 24px 0 12px; }
 
 .card-head .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .card-head .actions .pill { margin-left: 0; }
@@ -542,7 +540,7 @@ function render() {
   const err = data.errors?.eneba;
   $("#banner").hidden = !err;
   if (err) $("#banner").innerHTML = `<div class="banner">${icon("warn")}<div>${esc(err)}</div></div>`;
-  renderEneba(); renderAmazon(); renderAlerts(); renderAudit();
+  renderEneba(); renderAmazon(); renderAlerts(); renderAudit(); capAll();
 }
 
 // Every available card from the last run; the best one after the fee is highlighted.
@@ -677,10 +675,10 @@ function renderAudit() {
       : `<tr><td>${when(e.ts)}${e.manual ? '<span class="tag">Manual</span>' : ""}</td><td>${num(e.inr, 0)} INR</td><td class="r">₪${num(e.ils)}</td><td class="r strong">${num(e.ratio)}</td>
          <td class="r">${e.alert ? pill("success", "Alert sent", "bell") : pill("neutral", `Below ${e.threshold}`)}</td></tr>`).join("")}
     </tbody></table></div>`
-    : `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba runs in the last 24 hours</div><div class="t-cap">It runs every 12 hours, or use “Check now”.</div></div>`;
+    : `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba runs in the last 24 hours</div><div class="t-cap">It runs every 12 hours, or use “Run now”.</div></div>`;
 
   if (!amazon.length) {
-    $("#panel-amazon").innerHTML = `<div class="empty">${icon("inbox")}<div class="t-head">No Amazon checks in the last 24 hours</div><div class="t-cap">The watch runs every morning, or use “Run test”.</div></div>`;
+    $("#panel-amazon").innerHTML = `<div class="empty">${icon("inbox")}<div class="t-head">No Amazon checks in the last 24 hours</div><div class="t-cap">The watch runs every morning, or use “Run now”.</div></div>`;
     return;
   }
   const byLink = {};
@@ -708,10 +706,32 @@ function renderAudit() {
       <span><i style="background:var(--success)"></i>In stock</span><span><i style="background:color-mix(in srgb,var(--neutral) 45%,transparent)"></i>Out of stock</span>
       <span><i style="background:var(--warning)"></i>CAPTCHA</span><span><i style="background:var(--danger)"></i>Error</span><span><i style="background:var(--fill);outline:1px solid var(--separator)"></i>Not checked</span>
     </div>
-    <details><summary>${icon("chev", "i sm")}Show all ${amazon.length} checks${amazon.length > 500 ? " (latest 500)" : ""}</summary>
-      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Product</th><th>Status</th><th class="r">Price</th></tr></thead><tbody>${rows}</tbody></table></div>
-    </details>`;
+    <h3 class="t-head sub-head">All checks${amazon.length > 500 ? " (latest 500)" : ""}</h3>
+    <div class="table-wrap" id="amazon-checks"><table><thead><tr><th>Time</th><th>Product</th><th>Status</th><th class="r">Price</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
+
+// Show only the latest `n` rows of a list; the rest scrolls inside the box.
+// The scroll position survives the 60-second refresh.
+const capScroll = {};
+function capRows(key, el, sel, n = 5) {
+  if (!el) return;
+  if (el.nextElementSibling?.classList.contains("cap-hint")) el.nextElementSibling.remove();
+  el.classList.add("capped");
+  el.style.maxHeight = "";
+  const rows = el.querySelectorAll(sel);
+  if (rows.length <= n || !el.offsetParent) return;  // short list, or inside a hidden tab
+  el.style.maxHeight = `${Math.ceil(rows[n - 1].getBoundingClientRect().bottom - el.getBoundingClientRect().top)}px`;
+  el.scrollTop = capScroll[key] || 0;
+  el.onscroll = () => (capScroll[key] = el.scrollTop);
+  el.insertAdjacentHTML("afterend", `<div class="cap-hint t-cap">Latest ${n} of ${rows.length} · scroll for more</div>`);
+}
+function capAll() {
+  capRows("alerts", $("#alert-list"), ".alert-row");
+  capRows("eneba", $("#panel-eneba .table-wrap"), "tbody tr");
+  capRows("amazon", $("#amazon-checks"), "tbody tr");
+}
+let capTimer;
+window.addEventListener("resize", () => { clearTimeout(capTimer); capTimer = setTimeout(capAll, 150); });
 
 // ---------- settings form ----------
 const form = $("#settings");
@@ -841,6 +861,7 @@ function selectTab(t) {
     x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1;
     $("#" + x.getAttribute("aria-controls")).hidden = !on;
   }
+  capAll();  // the newly shown tab could not be measured while hidden
 }
 tabs.forEach((t, i) => {
   t.addEventListener("click", () => selectTab(t));

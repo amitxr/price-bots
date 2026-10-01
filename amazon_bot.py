@@ -129,6 +129,18 @@ def watch_alive() -> bool:
         return False
 
 
+def captcha_warned_recently(hours: int = 6) -> bool:
+    """True if a CAPTCHA warning was sent in the last `hours` (each all-day run is a new process)."""
+    path = history_path("amazon")
+    if not path.exists():
+        return False
+    cutoff = time.time() - hours * 3600
+    return any(
+        e.get("status") == "captcha" and e.get("alert") and datetime.fromisoformat(e["ts"]).timestamp() >= cutoff
+        for e in parse_events(path.read_text(encoding="utf-8"))
+    )
+
+
 def last_known_status() -> dict:
     """Last real in/out status per product link, from the history file."""
     path = history_path("amazon")
@@ -180,7 +192,7 @@ def main():
         return  # the morning watch is already checking every few seconds
     watching = not RUN_ONCE  # the long-running morning loop
     captcha_streak = 0
-    captcha_warned = False
+    captcha_warned = captcha_warned_recently()
     errors = 0
     prune_file(history_path("amazon"), days=7)
     known = last_known_status()
