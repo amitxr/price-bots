@@ -18,6 +18,7 @@ SETTINGS_FILE = ROOT / "settings.json"
 WATCH_HEARTBEAT = DATA_DIR / "amazon_watch.heartbeat"  # touched every round by the morning watch
 
 ENEBA_DEFAULT_URL = "https://www.eneba.com/psn-playstation-network-card-rs-3000-in-psn-key-india"
+ENEBA_DEFAULT_FEE = 22  # ₪ checkout fee Eneba adds to each purchase
 AMAZON_DEFAULTS = {
     "urls": ["https://amzn.in/d/05i6gRjT", "https://amzn.in/d/06DEU3Zq"],
     "start_time": "06:30",

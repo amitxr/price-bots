@@ -1,14 +1,16 @@
 """
 Eneba PSN India price watcher.
 
-Opens the Eneba product page in a real (headless) browser, reads the value tiles
-(e.g. "4000 INR / ₪171.33"), finds the one marked "Best value", computes how many
-INR you get per ₪1, and sends a Telegram message if it reaches THRESHOLD.
+Opens the Eneba product page in a real (headless) browser and reads every available
+value tile (e.g. "4000 INR / ₪170.65 / 23.44 INR per ₪1"). For each card it computes
+the real rate after Eneba's checkout fee (INR / (price + fee)) and sends a Telegram
+message if the best card reaches THRESHOLD.
 
 Config (environment variables):
   TELEGRAM_BOT_TOKEN  - required, from @BotFather
   TELEGRAM_CHAT_ID    - required, your chat id
-  THRESHOLD           - INR per ₪1 that triggers an alert (default 24)
+  THRESHOLD           - INR per ₪1 after the fee that triggers an alert (default 24)
+  ENEBA_FEE           - checkout fee in ₪ added to each purchase (default 22)
   PRODUCT_URL         - page to watch (default: PSN India Rs.3000 page)
   ALWAYS_NOTIFY       - "true" to get a status message every run, even below threshold
 """
@@ -22,16 +24,19 @@ import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
-from botlib import ENEBA_DEFAULT_URL, env, record_event, prune_file, history_path
+from botlib import ENEBA_DEFAULT_URL, ENEBA_DEFAULT_FEE, env, record_event, prune_file, history_path
 
 PRODUCT_URL = os.getenv("PRODUCT_URL") or ENEBA_DEFAULT_URL
 THRESHOLD = float(os.getenv("THRESHOLD", "24") or 24)
+FEE = float(os.getenv("ENEBA_FEE") or ENEBA_DEFAULT_FEE)
 ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "false").lower() == "true"
 TG_TOKEN = env("TELEGRAM_BOT_TOKEN")
 TG_CHAT = env("TELEGRAM_CHAT_ID")
 
 SYMBOLS = {"₪": "ILS", "$": "USD", "€": "EUR", "£": "GBP"}
 INR_LINE = re.compile(r"^([\d,]+)\s*INR$")
+# Every available tile ends with the site's own rate line, e.g. "23.44 INR per ₪1".
+RATE_LINE = re.compile(r"^[\d.,]+\s*INR per\s*\S+$")
 PRICE_LINE = re.compile(
     r"^(?P<pre>[₪$€£]|ILS|USD|EUR|GBP)?\s*(?P<num>[\d,]+\.\d{1,2})\s*(?P<post>[₪$€£]|ILS|USD|EUR|GBP)?$"
 )
@@ -65,36 +70,33 @@ def fetch_page_text(url: str) -> str:
 
 
 def parse_tiles(text: str):
-    """Return list of dicts: {inr, price, currency, best}."""
+    """Return the available tiles: list of {inr, price, currency, best}.
+
+    A tile is the three lines "<n> INR", "<price>", "<rate> INR per ₪1", optionally preceded
+    by "Best value". Anchoring on the rate line skips sold-out tiles and the "Value: 3000 INR"
+    label above the tiles (which used to get paired with the next tile's price).
+    """
     lines = [l.strip() for l in text.splitlines() if l.strip()]
-    tiles = []
+    tiles, seen = [], set()
     for i, line in enumerate(lines):
-        m = INR_LINE.match(line)
-        if not m:
+        if i < 2 or not RATE_LINE.match(line):
             continue
-        inr = float(m.group(1).replace(",", ""))
-        best = i > 0 and lines[i - 1].lower() == "best value"
-        # price is within the next few lines
-        for nxt in lines[i + 1 : i + 4]:
-            pm = PRICE_LINE.match(nxt)
-            if pm:
-                sym = pm.group("pre") or pm.group("post") or "₪"
-                cur = SYMBOLS.get(sym, sym)
-                price = float(pm.group("num").replace(",", ""))
-                tiles.append({"inr": inr, "price": price, "currency": cur, "best": best})
-                break
-    # de-duplicate (mobile/desktop layouts may render the same tile twice)
-    seen, unique = set(), []
-    for t in tiles:
-        key = (t["inr"], t["price"], t["currency"])
-        if key not in seen:
-            seen.add(key)
-            unique.append(t)
-        elif t["best"]:
-            for u in unique:
-                if (u["inr"], u["price"], u["currency"]) == key:
-                    u["best"] = True
-    return unique
+        m, pm = INR_LINE.match(lines[i - 2]), PRICE_LINE.match(lines[i - 1])
+        if not (m and pm):
+            continue
+        sym = pm.group("pre") or pm.group("post") or "₪"
+        tile = {
+            "inr": float(m.group(1).replace(",", "")),
+            "price": float(pm.group("num").replace(",", "")),
+            "currency": SYMBOLS.get(sym, sym),
+            "best": i >= 3 and lines[i - 3].lower() == "best value",
+        }
+        key = (tile["inr"], tile["price"])
+        if key in seen:  # mobile/desktop layouts may render the same tile twice
+            continue
+        seen.add(key)
+        tiles.append(tile)
+    return tiles
 
 
 def to_ils_rate(currency: str) -> float:
@@ -147,22 +149,21 @@ def run_check() -> dict:
     rate = to_ils_rate(tiles[0]["currency"])
     for t in tiles:
         t["ils"] = round(t["price"] * rate, 2)
-        t["ratio"] = round(t["inr"] / t["ils"], 2)
+        t["site_ratio"] = round(t["inr"] / t["ils"], 2)
+        t["ratio"] = round(t["inr"] / (t["ils"] + FEE), 2)  # what you really get after the fee
 
-    best = next((t for t in tiles if t["best"]), None)
-    label = "Best value"
-    if best is None:  # fallback: compute it ourselves
-        best = max(tiles, key=lambda t: t["ratio"])
-        label = "הכי משתלם (חושב ע״י הבוט)"
+    best = max(tiles, key=lambda t: t["ratio"])
+    site_best = next((t for t in tiles if t["best"]), None)
 
     converted = "" if tiles[0]["currency"] == "ILS" else f" (הומר מ-{tiles[0]['currency']})"
     summary = (
-        f"{label}: {int(best['inr'])} INR ב-₪{best['ils']:.2f}{converted}\n"
-        f"שער: {best['ratio']:.2f} INR לכל ₪1 (סף: {THRESHOLD:g})"
+        f"הכי משתלם: {int(best['inr'])} INR ב-₪{best['ils']:.2f} + עמלה ₪{FEE:g}{converted}\n"
+        f"שער אחרי עמלה: {best['ratio']:.2f} INR לכל ₪1 (סף: {THRESHOLD:g})"
     )
     print(summary)
     for t in sorted(tiles, key=lambda t: t["inr"]):
-        print(f"  {int(t['inr'])} INR  ₪{t['ils']:.2f}  {t['ratio']:.2f}{'  <- best' if t is best else ''}")
+        marks = ("  <- best" if t is best else "") + ("  [site: Best value]" if t["best"] else "")
+        print(f"  {int(t['inr'])} INR  ₪{t['ils']:.2f}  site {t['site_ratio']:.2f}  after fee {t['ratio']:.2f}{marks}")
 
     alert = best["ratio"] >= THRESHOLD
     if alert:
@@ -173,8 +174,11 @@ def run_check() -> dict:
     return {
         "inr": best["inr"],
         "ils": best["ils"],
+        "fee": FEE,
         "ratio": best["ratio"],
-        "source": "site" if label == "Best value" else "computed",
+        "site_ratio": best["site_ratio"],
+        "site_best_inr": site_best["inr"] if site_best else None,
+        "tiles": [{k: t[k] for k in ("inr", "ils", "site_ratio", "ratio")} for t in sorted(tiles, key=lambda t: t["inr"])],
         "alert": alert,
     }
 

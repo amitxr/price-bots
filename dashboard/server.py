@@ -22,7 +22,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from botlib import (  # noqa: E402
-    ROOT, ENEBA_DEFAULT_URL, WATCH_HEARTBEAT, amazon_settings, load_settings, save_settings, history_path, parse_events,
+    ROOT, ENEBA_DEFAULT_URL, ENEBA_DEFAULT_FEE, WATCH_HEARTBEAT, amazon_settings, load_settings, save_settings, history_path, parse_events,
 )
 
 HOST, PORT = "127.0.0.1", int(os.getenv("DASHBOARD_PORT") or 8765)
@@ -145,6 +145,7 @@ def next_eneba_run():
 def get_settings():
     eneba = cached("eneba_vars", 60, lambda: {
         "threshold": float(gh_variable("THRESHOLD") or 24),
+        "fee": float(gh_variable("ENEBA_FEE") or ENEBA_DEFAULT_FEE),
         "product_url": gh_variable("PRODUCT_URL") or ENEBA_DEFAULT_URL,
     })
     task = task_info()
@@ -186,6 +187,12 @@ def apply_settings(body):
             raise ValueError
     except (TypeError, ValueError):
         errors["eneba.threshold"] = "Enter a number between 1 and 200."
+    try:
+        fee = float(eneba.get("fee"))
+        if not 0 <= fee <= 500:
+            raise ValueError
+    except (TypeError, ValueError):
+        errors["eneba.fee"] = "Enter the fee in ₪ (0 if there is none)."
     product_url = (eneba.get("product_url") or "").strip()
     if not product_url.startswith("https://www.eneba.com/"):
         errors["eneba.product_url"] = "Must be an https://www.eneba.com/ link."
@@ -218,10 +225,12 @@ def apply_settings(body):
     current = get_settings()
     if threshold != current["eneba"]["threshold"]:
         run(["gh", "variable", "set", "THRESHOLD", "--repo", REPO, "--body", f"{threshold:g}"])
+    if fee != current["eneba"]["fee"]:
+        run(["gh", "variable", "set", "ENEBA_FEE", "--repo", REPO, "--body", f"{fee:g}"])
     if product_url != current["eneba"]["product_url"]:
         run(["gh", "variable", "set", "PRODUCT_URL", "--repo", REPO, "--body", product_url])
     # GitHub may return the old value for a few seconds after a set, so cache what we wrote.
-    _cache["eneba_vars"] = (time.time(), {"threshold": threshold, "product_url": product_url})
+    _cache["eneba_vars"] = (time.time(), {"threshold": threshold, "fee": fee, "product_url": product_url})
 
     settings = load_settings()
     settings["amazon"] = {"urls": urls, "start_time": start, "end_time": end, "interval": interval,
@@ -261,7 +270,8 @@ def start_bot(job, script, env):
 def run_eneba():
     s = get_settings()["eneba"]
     started = start_bot("eneba", "eneba_bot.py", {
-        "MANUAL_RUN": "true", "THRESHOLD": f"{s['threshold']:g}", "PRODUCT_URL": s["product_url"], "ALWAYS_NOTIFY": "false",
+        "MANUAL_RUN": "true", "THRESHOLD": f"{s['threshold']:g}", "ENEBA_FEE": f"{s['fee']:g}",
+        "PRODUCT_URL": s["product_url"], "ALWAYS_NOTIFY": "false",
     })
     return {"ok": True, "started": started, "message": "Checking Eneba…" if started else "Eneba check is already running."}
 

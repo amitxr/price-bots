@@ -33,6 +33,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           THRESHOLD: ${{ vars.THRESHOLD }}
+          ENEBA_FEE: ${{ vars.ENEBA_FEE }}
           PRODUCT_URL: ${{ vars.PRODUCT_URL }}
           ALWAYS_NOTIFY: ${{ vars.ALWAYS_NOTIFY }}
         run: python eneba_bot.py

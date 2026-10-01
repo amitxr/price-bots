@@ -252,6 +252,9 @@ tr:last-child td { border-bottom: 0; }
 th.r, td.r { text-align: right; padding-right: 0; }
 td.strong { font-weight: 700; }
 .table-wrap { overflow-x: auto; }
+.tiles { margin-top: 24px; }
+.tiles td, .tiles th { padding-top: 8px; padding-bottom: 8px; }
+.tiles tr.best td { color: var(--accent); }
 .tag { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; background: var(--fill); font-size: 11px; font-weight: 700; color: var(--label-3); line-height: 20px; vertical-align: middle; }
 
 .prod-audit { display: flex; flex-direction: column; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--separator); }
@@ -364,7 +367,12 @@ details thead th { position: sticky; top: 0; background: var(--surface-2); paddi
         <div class="field" data-key="eneba.threshold">
           <label for="threshold">Alert threshold</label>
           <div class="input-wrap"><input id="threshold" name="threshold" type="number" step="0.1" min="1" max="200" inputmode="decimal"><span class="suffix">INR per ₪1</span></div>
-          <div class="help">Alert when the Best value rate reaches this.</div>
+          <div class="help">Alert when any card reaches this rate after the fee.</div>
+        </div>
+        <div class="field" data-key="eneba.fee">
+          <label for="fee">Checkout fee</label>
+          <div class="input-wrap"><input id="fee" name="fee" type="number" step="0.01" min="0" max="500" inputmode="decimal"><span class="suffix">₪ per order</span></div>
+          <div class="help">Added to every card's price before comparing with the threshold.</div>
         </div>
         <div class="field" data-key="eneba.product_url">
           <label for="product_url">Product page</label>
@@ -537,6 +545,18 @@ function render() {
   renderEneba(); renderAmazon(); renderAlerts(); renderAudit();
 }
 
+// Every available card from the last run; the best one after the fee is highlighted.
+function tileTable(e) {
+  if (!e.tiles?.length) return "";
+  return `<div class="table-wrap tiles"><table>
+    <thead><tr><th>Card</th><th class="r">Price</th><th class="r">Site rate</th><th class="r">After fee</th></tr></thead>
+    <tbody>${e.tiles.map((t) => {
+      const best = t.inr === e.inr;
+      return `<tr${best ? ' class="best"' : ""}><td>${num(t.inr, 0)} INR${best ? '<span class="tag">Best</span>' : ""}${t.inr === e.site_best_inr && !best ? '<span class="tag">Site pick</span>' : ""}</td>
+        <td class="r">₪${num(t.ils)}</td><td class="r">${num(t.site_ratio)}</td><td class="r${best ? " strong" : ""}">${num(t.ratio)}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
 function renderEneba() {
   const e = data.latest.eneba, s = settings?.eneba;
   const threshold = e?.threshold ?? s?.threshold ?? 24;
@@ -550,19 +570,20 @@ function renderEneba() {
     status = hit ? pill("success", "Above threshold", "up") : pill("neutral", "Below threshold");
     const pct = Math.min(100, (e.ratio / threshold) * 100);
     body = `
-      <div class="metric"><span class="num">${num(e.ratio)}</span><span class="unit">INR per ₪1</span></div>
+      <div class="metric"><span class="num">${num(e.ratio)}</span><span class="unit">INR per ₪1${e.fee != null ? ` after ₪${e.fee} fee` : ""}</span></div>
       <div class="meter ${hit ? "hit" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${threshold}" aria-valuenow="${e.ratio}" aria-label="Rate compared with threshold"><div style="width:${pct}%"></div></div>
-      <div class="meter-legend t-cap"><span>${hit ? "Threshold reached" : `${num(threshold - e.ratio)} below threshold`}</span><span>Threshold ${threshold}</span></div>`;
+      <div class="meter-legend t-cap"><span>${hit ? "Threshold reached" : `${num(threshold - e.ratio)} below threshold`}</span><span>Threshold ${threshold}</span></div>
+      ${tileTable(e)}`;
   }
   $("#eneba-card").innerHTML = `
     <div class="card-head">
       <span class="bot-icon eneba">${icon("game")}</span>
-      <div><h3 class="t-head" id="eneba-title">Eneba · PSN India</h3><div class="t-cap">Best value tile</div></div>
+      <div><h3 class="t-head" id="eneba-title">Eneba · PSN India</h3><div class="t-cap">All cards · rate after checkout fee</div></div>
       <div class="actions">${status}${runButton("eneba")}</div>
     </div>
     ${body}
     <dl class="facts">
-      <div><dt>Best value</dt><dd>${e && !e.error ? `${num(e.inr, 0)} INR · ₪${num(e.ils)}` : "—"}</dd></div>
+      <div><dt>Best card</dt><dd>${e && !e.error ? `${num(e.inr, 0)} INR · ₪${num(e.ils)}${e.fee ? ` + ₪${e.fee}` : ""}` : "—"}</dd></div>
       <div><dt>Last check</dt><dd>${when(e?.ts)}</dd></div>
       <div><dt>Next check</dt><dd>${when(s?.next_run)}</dd></div>
     </dl>`;
@@ -596,7 +617,7 @@ function renderAmazon() {
 function alertInfo(e) {
   if (e.bot === "eneba") {
     if (e.error) return { ic: "warn", tone: "danger", what: "Eneba check failed", detail: e.error };
-    return { ic: "up", tone: "success", what: `Eneba rate ${num(e.ratio)} INR per ₪1`, detail: `${num(e.inr, 0)} INR for ₪${num(e.ils)} · threshold ${e.threshold}`, links: [[e.url, "Open Eneba"]] };
+    return { ic: "up", tone: "success", what: `Eneba rate ${num(e.ratio)} INR per ₪1${e.fee != null ? " after fee" : ""}`, detail: `${num(e.inr, 0)} INR for ₪${num(e.ils)}${e.fee ? ` + ₪${e.fee} fee` : ""} · threshold ${e.threshold}`, links: [[e.url, "Open Eneba"]] };
   }
   if (e.status === "in") return { ic: "check", tone: "success", what: "Back in stock on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}`,
     links: [[e.url || e.link, "Open to buy", true], [cartLink(e), "Add to cart"]] };
@@ -650,7 +671,7 @@ function renderAudit() {
   $("#n-amazon").textContent = amazon.length;
 
   $("#panel-eneba").innerHTML = eneba.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>Time</th><th>Best value</th><th class="r">Price</th><th class="r">Rate</th><th class="r">Result</th></tr></thead>
+    <thead><tr><th>Time</th><th>Best card</th><th class="r">Price</th><th class="r">Rate after fee</th><th class="r">Result</th></tr></thead>
     <tbody>${[...eneba].reverse().map((e) => e.error
       ? `<tr><td>${when(e.ts)}</td><td colspan="3" dir="auto">${esc(e.error)}</td><td class="r">${pill("danger", "Error", "warn")}</td></tr>`
       : `<tr><td>${when(e.ts)}${e.manual ? '<span class="tag">Manual</span>' : ""}</td><td>${num(e.inr, 0)} INR</td><td class="r">₪${num(e.ils)}</td><td class="r strong">${num(e.ratio)}</td>
@@ -697,6 +718,7 @@ const form = $("#settings");
 function fillForm() {
   const { eneba, amazon } = settings;
   form.threshold.value = eneba.threshold;
+  form.fee.value = eneba.fee;
   form.product_url.value = eneba.product_url;
   form.start_time.value = amazon.start_time;
   form.end_time.value = amazon.end_time;
@@ -719,7 +741,7 @@ form.addEventListener("submit", async (ev) => {
     const res = await api("/api/settings", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        eneba: { threshold: form.threshold.value, product_url: form.product_url.value },
+        eneba: { threshold: form.threshold.value, fee: form.fee.value, product_url: form.product_url.value },
         amazon: { start_time: form.start_time.value, end_time: form.end_time.value, interval: form.interval.value, background_interval: form.background_interval.value, urls: form.urls.value.split(/\n+/) },
       }),
     });
