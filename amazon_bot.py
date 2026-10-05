@@ -4,7 +4,9 @@ Amazon India restock watcher (morning window).
 Runs in a loop from start until END_TIME (Israel time), checking all products at
 once every INTERVAL seconds. When a product can be bought it sends a Telegram
 alert with a direct link. It alerts again only if the product sells out and
-comes back.
+comes back. "For sale" is reported at once; "sold out" only after SOLD_OUT_AFTER
+seconds with no check saying "in", so a flicker while the last units go is not
+reported as sold out and back again.
 
 "Can be bought" means any seller offer with an Add to Cart button, read from the
 product's "See All Buying Options" panel (a ~25 KB request). The product page
@@ -95,6 +97,9 @@ OFFER_RE = re.compile(r'aria-label="Add to Cart from seller (.+?) and price ([^"
 OFFER_ID_RE = re.compile(r'name="items\[0\.base\]\[offerListingId\]" value="([^"]+)"')
 OFFERS_TITLE_RE = re.compile(r'id="aod-asin-title-text"[^>]*>\s*([^<]+)')
 PAGE_EVERY_SECONDS = 30  # full product page as a backup this often
+# "Sold out" only after this long with no check saying "in". When the last units go, the product
+# page and the offers panel disagree for a minute or two (5 Oct: 9 in/out messages in 2 minutes).
+SOLD_OUT_AFTER = 60
 
 
 def send_telegram(msg: str, buttons=None):
@@ -164,15 +169,28 @@ def captcha_warned_recently(hours: int = 6) -> bool:
 
 
 def last_known_status() -> dict:
-    """Last real in/out status per product link, and since when (UTC ISO), from the history file."""
+    """Per product link, from the history file: (stock, since, out_since).
+
+    stock is the reported in/out state (events carry it as "stock"; older ones only have "status"),
+    since is when it started, and out_since is when the checks started saying "out" without
+    an "in" in between (None if the last check said "in"). Times are UTC ISO.
+    """
     path = history_path("amazon")
     last = {}
     if path.exists():
         for e in parse_events(path.read_text(encoding="utf-8")):
             if e.get("status") in ("in", "out") and not e.get("test"):
-                if last.get(e["link"], (None,))[0] != e["status"]:
-                    last[e["link"]] = (e["status"], e["ts"])
+                stock, since, out_since = last.get(e["link"], (None, None, None))
+                new_stock = e.get("stock", e["status"])
+                if new_stock != stock:
+                    stock, since = new_stock, e["ts"]
+                out_since = None if e["status"] == "in" else out_since or e["ts"]
+                last[e["link"]] = (stock, since, out_since)
     return last
+
+
+def seconds_since(ts) -> float:
+    return (datetime.now(ZoneInfo("UTC")) - datetime.fromisoformat(ts)).total_seconds() if ts else 0
 
 
 def minutes_since(ts) -> int:
@@ -273,8 +291,9 @@ async def main():
     page_every = max(1, round(PAGE_EVERY_SECONDS / INTERVAL))  # rounds between full product page loads
     prune_file(history_path("amazon"), days=7)
     known = last_known_status()
-    last = {u: known.get(u, (None,))[0] for u in URLS}
-    since = {u: known.get(u, (None, None))[1] for u in URLS}  # when the current status started
+    last = {u: known.get(u, (None,))[0] for u in URLS}  # reported stock: changes only through an alert
+    since = {u: known.get(u, (None, None))[1] for u in URLS}  # when the current stock started
+    out_since = {u: known.get(u, (None, None, None))[2] for u in URLS}  # first "out" since the last "in"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -360,6 +379,8 @@ async def main():
                     state["captcha_warned"] = alert = True
             else:
                 state["captcha_streak"] = 0
+                now = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
+                out_since[u] = None if r["status"] == "in" else out_since[u] or now
                 if r["status"] == "in" and last[u] != "in":
                     hint = ("\nאין Buy Now בדף? See All Buying Options ← Add to Cart"
                             if r.get("via") == "offers" else "")
@@ -367,20 +388,20 @@ async def main():
                                  f"{f' · מוכר: {seller}' if seller else ''}{hint}\n{r['url']}",
                                  buttons=product_buttons(r))
                     alert = True
-                elif r["status"] == "out" and last[u] == "in":
+                elif r["status"] == "out" and last[u] == "in" and seconds_since(out_since[u]) >= SOLD_OUT_AFTER:
                     in_minutes = minutes_since(since[u])
                     started = f" (מ-{datetime.fromisoformat(since[u]).astimezone(TZ):%H:%M})" if since[u] else ""
                     await notify(f"❌ אזל שוב במלאי באמזון\n{r['title']}\n"
                                  f"היה זמין {in_minutes} דקות{started}\n{r['url']}",
                                  buttons=[("פתח מוצר", r["url"])])
                     alert = True
-                if r["status"] in ("in", "out") and r["status"] != last[u]:
-                    last[u] = r["status"]
-                    since[u] = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
+                if r["status"] in ("in", "out") and (alert or last[u] is None):  # stock changes only with its message
+                    last[u], since[u] = r["status"], now
 
             record_event("amazon", {"link": u, "url": r["url"], "asin": asin_of(r["url"]),
                                     "product": r["title"], "status": r["status"],
                                     "price": r["price"], "alert": alert, "test": TEST_MODE,
+                                    **({"stock": last[u]} if r["status"] in ("in", "out") and not TEST_MODE else {}),
                                     **({"seller": seller} if seller else {}),
                                     **({"via": "offers"} if r.get("via") == "offers" else {}),
                                     **({"in_minutes": in_minutes} if in_minutes is not None else {})})
