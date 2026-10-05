@@ -1,8 +1,8 @@
 """
-Shared helpers for the bots and the dashboard: local settings file and JSONL history.
+Shared helpers for the Amazon bot and the dashboard: local settings file and JSONL history.
 
 settings.json (local only, edited from the dashboard):
-  {"amazon": {"urls": [...], "start_time": "06:30", "end_time": "09:15", "interval": 25, "background_interval": 5}}
+  {"amazon": {"urls": [...], "start_time": "06:30", "end_time": "09:15", "interval": 5, "background_interval": 5}}
 
 History files live in data/<bot>_history.jsonl, one JSON event per line, "ts" in UTC ISO format.
 """
@@ -17,13 +17,11 @@ DATA_DIR = ROOT / "data"
 SETTINGS_FILE = ROOT / "settings.json"
 WATCH_HEARTBEAT = DATA_DIR / "amazon_watch.heartbeat"  # touched every round by the morning watch
 
-ENEBA_DEFAULT_URL = "https://www.eneba.com/psn-playstation-network-card-rs-3000-in-psn-key-india"
-ENEBA_DEFAULT_FEE = 22  # ₪ checkout fee Eneba adds to each purchase
 AMAZON_DEFAULTS = {
     "urls": ["https://amzn.in/d/05i6gRjT", "https://amzn.in/d/06DEU3Zq"],
     "start_time": "06:30",
     "end_time": "09:15",
-    "interval": 25,
+    "interval": 5,
     "background_interval": 5,  # minutes between all-day checks outside the window (0 = off)
 }
 

@@ -1,10 +1,9 @@
 """
-Local dashboard for the price bots. Serves index.html and a small JSON API on 127.0.0.1 only.
+Local dashboard for the Amazon restock bot. Serves index.html and a small JSON API on 127.0.0.1 only.
 
   GET  /api/data?hours=24   latest status, alerts (7 days) and audit events (last `hours`)
   GET  /api/settings        current settings + next scheduled runs
-  POST /api/settings        apply settings (GitHub variables / settings.json / scheduled task)
-  POST /api/run/eneba       run the Eneba check once on this PC now
+  POST /api/settings        apply settings (settings.json / scheduled tasks)
   POST /api/run/amazon      run the Amazon check once on this PC now (normal alerts)
   POST /api/run/amazon-test run the Amazon bot once in test mode (status messages to Telegram)
 """
@@ -22,29 +21,15 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from botlib import (  # noqa: E402
-    ROOT, ENEBA_DEFAULT_URL, ENEBA_DEFAULT_FEE, WATCH_HEARTBEAT, amazon_settings, load_settings, save_settings, history_path, parse_events,
+    ROOT, WATCH_HEARTBEAT, amazon_settings, load_settings, save_settings, history_path, parse_events,
 )
 
 HOST, PORT = "127.0.0.1", int(os.getenv("DASHBOARD_PORT") or 8765)
-REPO = os.getenv("GITHUB_REPO") or "amitxr/price-bots"
 TASK_NAME = "Amazon morning watch"
 BACKGROUND_TASK = "Amazon all-day check"
-ENEBA_CRON_HOURS_UTC = (0, 12)  # must match .github/workflows/eneba-check.yml
 INDEX = Path(__file__).resolve().parent / "index.html"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-
-_cache = {}
-
-
-def cached(key, ttl, fn):
-    hit = _cache.get(key)
-    if hit and time.time() - hit[0] < ttl:
-        return hit[1]
-    value = fn()
-    _cache[key] = (time.time(), value)
-    return value
-
 
 def run(cmd, timeout=30):
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout,
@@ -60,20 +45,6 @@ def powershell(script, timeout=30):
 
 # ---------- data ----------
 
-def eneba_events():
-    def fetch():
-        text = run(["gh", "api", "-H", "Accept: application/vnd.github.raw",
-                    f"repos/{REPO}/contents/eneba_history.jsonl?ref=data"])
-        return parse_events(text)
-    try:
-        return cached("eneba_events", 60, fetch), None
-    except Exception as e:
-        msg = str(e)
-        if "404" in msg or "Not Found" in msg:
-            return [], None  # no history pushed yet
-        return [], f"Could not load Eneba history from GitHub: {msg[:160]}"
-
-
 def since(events, hours):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     return [e for e in events if datetime.fromisoformat(e["ts"]) >= cutoff]
@@ -85,9 +56,6 @@ def local_events(bot):
 
 
 def get_data(hours):
-    github_eneba, eneba_error = eneba_events()
-    # Runs started with "Run now" happen on this PC and are only in the local file.
-    eneba = sorted(github_eneba + local_events("eneba"), key=lambda e: e["ts"])
     amazon = local_events("amazon")
     latest_amazon = {}
     for e in amazon:
@@ -95,27 +63,18 @@ def get_data(hours):
             latest_amazon[e["link"]] = e
     return {
         "now": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "errors": {"eneba": eneba_error},
-        "running": {"eneba": is_running("eneba"), "amazon": is_running("amazon")},
+        "running": {"amazon": is_running("amazon")},
         "watch_active": WATCH_HEARTBEAT.exists() and time.time() - WATCH_HEARTBEAT.stat().st_mtime < 120,
         "latest": {
-            "eneba": eneba[-1] if eneba else None,
             "amazon": [latest_amazon.get(u) or {"link": u} for u in amazon_settings()["urls"]],
         },
-        "alerts": sorted([e for e in since(eneba + amazon, 24 * 7) if e.get("alert")],
+        "alerts": sorted([e for e in since(amazon, 24 * 7) if e.get("alert")],
                          key=lambda e: e["ts"], reverse=True),
-        "audit": {"eneba": since(eneba, hours), "amazon": since(amazon, hours)},
+        "audit": {"amazon": since(amazon, hours)},
     }
 
 
 # ---------- settings ----------
-
-def gh_variable(name):
-    try:
-        return run(["gh", "variable", "get", name, "--repo", REPO]).strip()
-    except RuntimeError:
-        return ""
-
 
 def task_info(name=TASK_NAME):
     script = (
@@ -133,28 +92,13 @@ def task_info(name=TASK_NAME):
         return {"start": None, "next": None, "state": "missing"}
 
 
-def next_eneba_run():
-    now = datetime.now(timezone.utc)
-    for day in range(2):
-        for h in ENEBA_CRON_HOURS_UTC:
-            t = (now + timedelta(days=day)).replace(hour=h, minute=0, second=0, microsecond=0)
-            if t > now:
-                return t.isoformat()
-
-
 def get_settings():
-    eneba = cached("eneba_vars", 60, lambda: {
-        "threshold": float(gh_variable("THRESHOLD") or 24),
-        "fee": float(gh_variable("ENEBA_FEE") or ENEBA_DEFAULT_FEE),
-        "product_url": gh_variable("PRODUCT_URL") or ENEBA_DEFAULT_URL,
-    })
     task = task_info()
     background = task_info(BACKGROUND_TASK)
     amazon = amazon_settings()
     if task["start"]:
         amazon["start_time"] = task["start"]
     return {
-        "eneba": {**eneba, "next_run": next_eneba_run(), "schedule": "Every 12 hours (GitHub)"},
         "amazon": {**amazon, "next_run": task["next"], "task_state": task["state"],
                    "background_next_run": background["next"], "background_state": background["state"]},
     }
@@ -178,31 +122,14 @@ def set_background_task(minutes):
 
 def apply_settings(body):
     errors = {}
-    eneba, amazon = body.get("eneba", {}), body.get("amazon", {})
-
-    threshold = eneba.get("threshold")
-    try:
-        threshold = float(threshold)
-        if not 1 <= threshold <= 200:
-            raise ValueError
-    except (TypeError, ValueError):
-        errors["eneba.threshold"] = "Enter a number between 1 and 200."
-    try:
-        fee = float(eneba.get("fee"))
-        if not 0 <= fee <= 500:
-            raise ValueError
-    except (TypeError, ValueError):
-        errors["eneba.fee"] = "Enter the fee in ₪ (0 if there is none)."
-    product_url = (eneba.get("product_url") or "").strip()
-    if not product_url.startswith("https://www.eneba.com/"):
-        errors["eneba.product_url"] = "Must be an https://www.eneba.com/ link."
+    amazon = body.get("amazon", {})
 
     try:
         interval = int(amazon.get("interval"))
-        if not 10 <= interval <= 600:
+        if not 5 <= interval <= 600:
             raise ValueError
     except (TypeError, ValueError):
-        errors["amazon.interval"] = "Enter whole seconds between 10 and 600."
+        errors["amazon.interval"] = "Enter whole seconds between 5 and 600."
     try:
         background_interval = int(amazon.get("background_interval"))
         if not 0 <= background_interval <= 120:
@@ -223,15 +150,6 @@ def apply_settings(body):
         return {"ok": False, "errors": errors}
 
     current = get_settings()
-    if threshold != current["eneba"]["threshold"]:
-        run(["gh", "variable", "set", "THRESHOLD", "--repo", REPO, "--body", f"{threshold:g}"])
-    if fee != current["eneba"]["fee"]:
-        run(["gh", "variable", "set", "ENEBA_FEE", "--repo", REPO, "--body", f"{fee:g}"])
-    if product_url != current["eneba"]["product_url"]:
-        run(["gh", "variable", "set", "PRODUCT_URL", "--repo", REPO, "--body", product_url])
-    # GitHub may return the old value for a few seconds after a set, so cache what we wrote.
-    _cache["eneba_vars"] = (time.time(), {"threshold": threshold, "fee": fee, "product_url": product_url})
-
     settings = load_settings()
     settings["amazon"] = {"urls": urls, "start_time": start, "end_time": end, "interval": interval,
                           "background_interval": background_interval}
@@ -265,15 +183,6 @@ def start_bot(job, script, env):
         _procs[job] = subprocess.Popen([str(python if python.exists() else sys.executable), script], cwd=ROOT,
                                        env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
     return True
-
-
-def run_eneba():
-    s = get_settings()["eneba"]
-    started = start_bot("eneba", "eneba_bot.py", {
-        "MANUAL_RUN": "true", "THRESHOLD": f"{s['threshold']:g}", "ENEBA_FEE": f"{s['fee']:g}",
-        "PRODUCT_URL": s["product_url"], "ALWAYS_NOTIFY": "false",
-    })
-    return {"ok": True, "started": started, "message": "Checking Eneba…" if started else "Eneba check is already running."}
 
 
 def run_amazon():
@@ -328,7 +237,6 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
         routes = {
             "/api/settings": lambda: apply_settings(body),
-            "/api/run/eneba": run_eneba,
             "/api/run/amazon": run_amazon,
             "/api/run/amazon-test": run_amazon_test,
         }
@@ -340,5 +248,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"Price bots dashboard: http://{HOST}:{PORT}  (Ctrl+C to stop)")
+    print(f"Amazon bot dashboard: http://{HOST}:{PORT}  (Ctrl+C to stop)")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

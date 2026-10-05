@@ -183,13 +183,12 @@ section { scroll-margin-top: 24px; }
 .sec-head .t-title { display: flex; align-items: center; gap: 8px; }
 
 .card { background: var(--surface); border-radius: var(--r-md); padding: 24px; min-width: 0; }
-.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 24px; }
 .card-head > div:not(.actions) { flex: 1 1 200px; min-width: 0; }
 .card-head .t-cap { margin-top: 2px; }
 .card-head .pill { margin-left: auto; }
 .bot-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; }
-.bot-icon.eneba { background: var(--accent-soft); color: var(--accent); }
 .bot-icon.amazon { background: var(--warning-soft); color: var(--warning); }
 
 .pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
@@ -199,13 +198,6 @@ section { scroll-margin-top: 24px; }
 .pill.neutral { background: var(--neutral-soft); color: var(--neutral); }
 .pill.accent  { background: var(--accent-soft);  color: var(--accent); }
 
-.metric { display: flex; align-items: baseline; gap: 8px; }
-.metric .num { font-size: 48px; line-height: 1; font-weight: 800; letter-spacing: -.03em; }
-.metric .unit { font-size: 15px; font-weight: 600; color: var(--label-2); }
-.meter { margin: 16px 0 8px; height: 8px; border-radius: 999px; background: var(--fill); overflow: hidden; }
-.meter > div { height: 100%; border-radius: inherit; background: var(--accent); transform-origin: left; transition: width .4s var(--ease); }
-.meter.hit > div { background: var(--success); }
-.meter-legend { display: flex; justify-content: space-between; }
 .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--separator); }
 .facts dt { font-size: 12px; color: var(--label-3); }
 .facts dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; }
@@ -236,14 +228,6 @@ section { scroll-margin-top: 24px; }
 .empty .t-head { color: var(--label-2); font-size: 15px; }
 
 /* audit */
-.segmented { display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; background: var(--fill); }
-.segmented button {
-  min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--label-2);
-  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; position: relative; transition: background-color .2s var(--ease), color .2s var(--ease);
-}
-.segmented button::after { content: ""; position: absolute; inset: -4px 0; }
-.segmented button[aria-selected="true"] { background: var(--surface-2); color: var(--label); box-shadow: 0 1px 3px rgba(15, 27, 36, .12); }
-.segmented .n { color: var(--label-3); font-weight: 600; margin-left: 4px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { text-align: left; font-size: 12px; font-weight: 700; color: var(--label-3); letter-spacing: .02em; padding: 0 12px 12px 0; border-bottom: 1px solid var(--separator); }
@@ -252,9 +236,6 @@ tr:last-child td { border-bottom: 0; }
 th.r, td.r { text-align: right; padding-right: 0; }
 td.strong { font-weight: 700; }
 .table-wrap { overflow-x: auto; }
-.tiles { margin-top: 24px; }
-.tiles td, .tiles th { padding-top: 8px; padding-bottom: 8px; }
-.tiles tr.best td { color: var(--accent); }
 .tag { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; background: var(--fill); font-size: 11px; font-weight: 700; color: var(--label-3); line-height: 20px; vertical-align: middle; }
 
 .prod-audit { display: flex; flex-direction: column; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--separator); }
@@ -305,7 +286,7 @@ td.strong { font-weight: 700; }
 }
 
 /* responsive */
-@media (max-width: 1100px) { .cards { grid-template-columns: minmax(0, 1fr); } main { padding: 32px 24px 48px; } }
+@media (max-width: 1100px) { main { padding: 32px 24px 48px; } }
 @media (max-width: 860px) {
   .shell { grid-template-columns: minmax(0, 1fr); margin: 16px; min-height: auto; background: var(--shell); }
   .sidebar { position: static; max-height: none; background: var(--sidebar); border-bottom: 1px solid var(--separator); }
@@ -326,7 +307,6 @@ td.strong { font-weight: 700; }
   <symbol id="i-overview" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
   <symbol id="i-audit" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></symbol>
-  <symbol id="i-game" viewBox="0 0 24 24"><path d="M6 12h4M8 10v4M15 13h.01M18 11h.01"/><rect width="20" height="12" x="2" y="6" rx="2"/></symbol>
   <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
@@ -345,7 +325,7 @@ td.strong { font-weight: 700; }
   <aside class="sidebar" aria-label="Navigation and settings">
     <div class="brand">
       <div class="brand-mark"><svg class="i"><use href="#i-mark"/></svg></div>
-      <div><div class="t-head">Price Bots</div><div class="t-cap">Eneba · Amazon India</div></div>
+      <div><div class="t-head">Price Bots</div><div class="t-cap">Amazon India</div></div>
     </div>
 
     <nav class="nav" aria-label="Sections">
@@ -359,28 +339,6 @@ td.strong { font-weight: 700; }
 
       <fieldset class="group" style="border:0;margin:0">
         <div class="group-head">
-          <span class="bot-icon eneba" style="width:32px;height:32px;border-radius:8px"><svg class="i sm"><use href="#i-game"/></svg></span>
-          <legend class="t-head" style="padding:0">Eneba</legend>
-        </div>
-        <div class="field" data-key="eneba.threshold">
-          <label for="threshold">Alert threshold</label>
-          <div class="input-wrap"><input id="threshold" name="threshold" type="number" step="0.1" min="1" max="200" inputmode="decimal"><span class="suffix">INR per ₪1</span></div>
-          <div class="help">Alert when any card reaches this rate after the fee.</div>
-        </div>
-        <div class="field" data-key="eneba.fee">
-          <label for="fee">Checkout fee</label>
-          <div class="input-wrap"><input id="fee" name="fee" type="number" step="0.01" min="0" max="500" inputmode="decimal"><span class="suffix">₪ per order</span></div>
-          <div class="help">Added to every card's price before comparing with the threshold.</div>
-        </div>
-        <div class="field" data-key="eneba.product_url">
-          <label for="product_url">Product page</label>
-          <input id="product_url" name="product_url" type="url" spellcheck="false">
-        </div>
-        <div class="help" id="eneba-schedule">Runs every 12 hours on GitHub.</div>
-      </fieldset>
-
-      <fieldset class="group" style="border:0;margin:0">
-        <div class="group-head">
           <span class="bot-icon amazon" style="width:32px;height:32px;border-radius:8px"><svg class="i sm"><use href="#i-box"/></svg></span>
           <legend class="t-head" style="padding:0">Amazon</legend>
           <button type="button" class="btn btn-ghost" id="test-amazon" title="Checks once and sends each product's status to Telegram"><svg class="i sm"><use href="#i-bell"/></svg>Test Telegram</button>
@@ -391,8 +349,8 @@ td.strong { font-weight: 700; }
         </div>
         <div class="field" data-key="amazon.interval">
           <label for="interval">Time between checks</label>
-          <div class="input-wrap"><input id="interval" name="interval" type="number" min="10" max="600" step="1" inputmode="numeric"><span class="suffix">seconds</span></div>
-          <div class="help">A random ±5 s is added so it looks less like a bot.</div>
+          <div class="input-wrap"><input id="interval" name="interval" type="number" min="5" max="600" step="1" inputmode="numeric"><span class="suffix">seconds</span></div>
+          <div class="help">All products are checked together, including every seller under “See All Buying Options”. A random ±20% is added so it looks less like a bot.</div>
         </div>
         <div class="field" data-key="amazon.background_interval">
           <label for="background_interval">All-day check</label>
@@ -424,8 +382,7 @@ td.strong { font-weight: 700; }
       </div>
       <div id="banner" style="margin-top:24px" hidden></div>
       <div class="cards" style="margin-top:24px">
-        <article class="card reveal" id="eneba-card" aria-labelledby="eneba-title"></article>
-        <article class="card reveal" id="amazon-card" style="animation-delay:.05s" aria-labelledby="amazon-title"></article>
+        <article class="card reveal" id="amazon-card" aria-labelledby="amazon-title"></article>
       </div>
     </section>
 
@@ -440,13 +397,9 @@ td.strong { font-weight: 700; }
     <section id="audit" class="reveal" style="animation-delay:.15s">
       <div class="sec-head">
         <h2 class="t-title">Audit <span class="t-sub" style="font-weight:500">· last 24 hours</span></h2>
-        <div class="segmented" role="tablist" aria-label="Bot">
-          <button role="tab" id="tab-eneba" aria-controls="panel-eneba" aria-selected="true">Eneba<span class="n" id="n-eneba"></span></button>
-          <button role="tab" id="tab-amazon" aria-controls="panel-amazon" aria-selected="false" tabindex="-1">Amazon<span class="n" id="n-amazon"></span></button>
-        </div>
+        <span class="t-cap" id="n-amazon"></span>
       </div>
-      <div class="card" role="tabpanel" id="panel-eneba" aria-labelledby="tab-eneba"></div>
-      <div class="card" role="tabpanel" id="panel-amazon" aria-labelledby="tab-amazon" hidden></div>
+      <div class="card" id="panel-amazon"></div>
     </section>
   </main>
 </div>
@@ -495,6 +448,9 @@ const cartLink = (e) => {
   const asin = e?.asin || (e?.url || "").match(/\/dp\/([A-Z0-9]{10})/)?.[1];
   return asin ? `https://www.amazon.in/associates/addtocart?ASIN.1=${asin}&Quantity.1=1` : null;
 };
+// An offer found under "See All Buying Options" opens that panel; the cart link only adds the main Buy box offer.
+const buyLink = (e) => (e.via === "offers" && e.url ? `${e.url}?aod=1` : e.url || e.link);
+const sellerText = (e) => (e.seller ? ` · ${e.seller}` : "");
 const linkBtn = (href, label, primary) =>
   `<a class="alert-link${primary ? " primary" : ""}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}${primary ? "" : icon("chev", "i sm")}</a>`;
 
@@ -537,54 +493,8 @@ async function loadSettings() {
 function render() {
   if (!data) return;
   $("#updated").textContent = `Updated ${when(data.now)} · refreshes every minute`;
-  const err = data.errors?.eneba;
-  $("#banner").hidden = !err;
-  if (err) $("#banner").innerHTML = `<div class="banner">${icon("warn")}<div>${esc(err)}</div></div>`;
-  renderEneba(); renderAmazon(); renderAlerts(); renderAudit(); capAll();
-}
-
-// Every available card from the last run; the best one after the fee is highlighted.
-function tileTable(e) {
-  if (!e.tiles?.length) return "";
-  return `<div class="table-wrap tiles"><table>
-    <thead><tr><th>Card</th><th class="r">Price</th><th class="r">Site rate</th><th class="r">After fee</th></tr></thead>
-    <tbody>${e.tiles.map((t) => {
-      const best = t.inr === e.inr;
-      return `<tr${best ? ' class="best"' : ""}><td>${num(t.inr, 0)} INR${best ? '<span class="tag">Best</span>' : ""}${t.inr === e.site_best_inr && !best ? '<span class="tag">Site pick</span>' : ""}</td>
-        <td class="r">₪${num(t.ils)}</td><td class="r">${num(t.site_ratio)}</td><td class="r${best ? " strong" : ""}">${num(t.ratio)}</td></tr>`;
-    }).join("")}</tbody></table></div>`;
-}
-
-function renderEneba() {
-  const e = data.latest.eneba, s = settings?.eneba;
-  const threshold = e?.threshold ?? s?.threshold ?? 24;
-  let status = pill("neutral", "No runs yet", "help");
-  let body = `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba history yet</div><div class="t-cap">The next GitHub run will appear here.</div></div>`;
-  if (e?.error) {
-    status = pill("danger", "Error", "warn");
-    body = `<p class="t-sub" dir="auto">${esc(e.error)}</p>`;
-  } else if (e) {
-    const hit = e.ratio >= threshold;
-    status = hit ? pill("success", "Above threshold", "up") : pill("neutral", "Below threshold");
-    const pct = Math.min(100, (e.ratio / threshold) * 100);
-    body = `
-      <div class="metric"><span class="num">${num(e.ratio)}</span><span class="unit">INR per ₪1${e.fee != null ? ` after ₪${e.fee} fee` : ""}</span></div>
-      <div class="meter ${hit ? "hit" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${threshold}" aria-valuenow="${e.ratio}" aria-label="Rate compared with threshold"><div style="width:${pct}%"></div></div>
-      <div class="meter-legend t-cap"><span>${hit ? "Threshold reached" : `${num(threshold - e.ratio)} below threshold`}</span><span>Threshold ${threshold}</span></div>
-      ${tileTable(e)}`;
-  }
-  $("#eneba-card").innerHTML = `
-    <div class="card-head">
-      <span class="bot-icon eneba">${icon("game")}</span>
-      <div><h3 class="t-head" id="eneba-title">Eneba · PSN India</h3><div class="t-cap">All cards · rate after checkout fee</div></div>
-      <div class="actions">${status}${runButton("eneba")}</div>
-    </div>
-    ${body}
-    <dl class="facts">
-      <div><dt>Best card</dt><dd>${e && !e.error ? `${num(e.inr, 0)} INR · ₪${num(e.ils)}${e.fee ? ` + ₪${e.fee}` : ""}` : "—"}</dd></div>
-      <div><dt>Last check</dt><dd>${when(e?.ts)}</dd></div>
-      <div><dt>Next check</dt><dd>${when(s?.next_run)}</dd></div>
-    </dl>`;
+  $("#banner").hidden = true;
+  renderAmazon(); renderAlerts(); renderAudit(); capAll();
 }
 
 function renderAmazon() {
@@ -594,8 +504,8 @@ function renderAmazon() {
     return `<div class="product">
       <div class="name" dir="auto" title="${esc(shortName(e))}"><a href="${esc(e.url || e.link)}" target="_blank" rel="noopener">${esc(shortName(e))}</a></div>
       ${st ? pill(st.tone, st.label, st.icon) : pill("neutral", "Not checked yet")}
-      <div class="meta t-cap">${e.ts ? `${esc(e.price || "")}${e.price ? " · " : ""}checked ${ago(e.ts)}` : esc(e.link)}</div>
-      ${e.status === "in" && cartLink(e) ? `<div class="alert-links" style="grid-column:2;justify-self:end">${linkBtn(e.url || e.link, "Open to buy", true)}</div>` : ""}
+      <div class="meta t-cap">${e.ts ? `${esc(e.price || "")}${esc(e.status === "in" ? sellerText(e) : "")}${e.price ? " · " : ""}checked ${ago(e.ts)}` : esc(e.link)}</div>
+      ${e.status === "in" && cartLink(e) ? `<div class="alert-links" style="grid-column:2;justify-self:end">${linkBtn(buyLink(e), "Open to buy", true)}</div>` : ""}
     </div>`;
   }).join("");
   $("#amazon-card").innerHTML = `
@@ -613,12 +523,8 @@ function renderAmazon() {
 }
 
 function alertInfo(e) {
-  if (e.bot === "eneba") {
-    if (e.error) return { ic: "warn", tone: "danger", what: "Eneba check failed", detail: e.error };
-    return { ic: "up", tone: "success", what: `Eneba rate ${num(e.ratio)} INR per ₪1${e.fee != null ? " after fee" : ""}`, detail: `${num(e.inr, 0)} INR for ₪${num(e.ils)}${e.fee ? ` + ₪${e.fee} fee` : ""} · threshold ${e.threshold}`, links: [[e.url, "Open Eneba"]] };
-  }
-  if (e.status === "in") return { ic: "check", tone: "success", what: "Back in stock on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}`,
-    links: [[e.url || e.link, "Open to buy", true], [cartLink(e), "Add to cart"]] };
+  if (e.status === "in") return { ic: "check", tone: "success", what: "For sale on Amazon", detail: `${shortName(e)}${e.price ? " · " + e.price : ""}${sellerText(e)}`,
+    links: [[buyLink(e), "Open to buy", true], [e.via === "offers" ? null : cartLink(e), "Add to cart"]] };
   if (e.status === "out") return { ic: "x", tone: "neutral", what: "Sold out again on Amazon",
     detail: `${shortName(e)}${e.in_minutes != null ? ` · was available ${e.in_minutes} min` : ""}`, links: [[e.url || e.link, "View product"]] };
   if (e.status === "captcha") return { ic: "shield", tone: "warning", what: "Amazon is showing CAPTCHAs", detail: "Checks are being blocked" };
@@ -639,7 +545,7 @@ function renderAlerts() {
         ${a.links ? `<div class="alert-links">${a.links.filter(([href]) => href).map(([href, label, primary]) => linkBtn(href, label, primary)).join("")}</div>` : ""}</div>
       <time datetime="${e.ts}">${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}<small>${when(e.ts).split(" ")[0] === "Today" ? "Today" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</small></time>
     </div>`;
-  }).join("") : `<div class="empty">${icon("bell")}<div class="t-head">No alerts in the last 7 days</div><div class="t-cap">Restocks and good Eneba rates will show up here.</div></div>`;
+  }).join("") : `<div class="empty">${icon("bell")}<div class="t-head">No alerts in the last 7 days</div><div class="t-cap">Restocks will show up here.</div></div>`;
 }
 
 // 24 hours in 15-minute slots; each slot shows the most important status seen in it.
@@ -666,18 +572,8 @@ function stripAxis() {
 }
 
 function renderAudit() {
-  const { eneba, amazon } = data.audit;
-  $("#n-eneba").textContent = eneba.length;
-  $("#n-amazon").textContent = amazon.length;
-
-  $("#panel-eneba").innerHTML = eneba.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>Time</th><th>Best card</th><th class="r">Price</th><th class="r">Rate after fee</th><th class="r">Result</th></tr></thead>
-    <tbody>${[...eneba].reverse().map((e) => e.error
-      ? `<tr><td>${when(e.ts)}</td><td colspan="3" dir="auto">${esc(e.error)}</td><td class="r">${pill("danger", "Error", "warn")}</td></tr>`
-      : `<tr><td>${when(e.ts)}${e.manual ? '<span class="tag">Manual</span>' : ""}</td><td>${num(e.inr, 0)} INR</td><td class="r">₪${num(e.ils)}</td><td class="r strong">${num(e.ratio)}</td>
-         <td class="r">${e.alert ? pill("success", "Alert sent", "bell") : pill("neutral", `Below ${e.threshold}`)}</td></tr>`).join("")}
-    </tbody></table></div>`
-    : `<div class="empty">${icon("inbox")}<div class="t-head">No Eneba runs in the last 24 hours</div><div class="t-cap">It runs every 12 hours, or use “Run now”.</div></div>`;
+  const { amazon } = data.audit;
+  $("#n-amazon").textContent = `${amazon.length} checks`;
 
   if (!amazon.length) {
     $("#panel-amazon").innerHTML = `<div class="empty">${icon("inbox")}<div class="t-head">No Amazon checks in the last 24 hours</div><div class="t-cap">The watch runs every morning, or use “Run now”.</div></div>`;
@@ -721,7 +617,7 @@ function capRows(key, el, sel, n = 5) {
   el.classList.add("capped");
   el.style.maxHeight = "";
   const rows = el.querySelectorAll(sel);
-  if (rows.length <= n || !el.offsetParent) return;  // short list, or inside a hidden tab
+  if (rows.length <= n || !el.offsetParent) return;  // short list, or not on screen
   el.style.maxHeight = `${Math.ceil(rows[n - 1].getBoundingClientRect().bottom - el.getBoundingClientRect().top)}px`;
   el.scrollTop = capScroll[key] || 0;
   el.onscroll = () => (capScroll[key] = el.scrollTop);
@@ -729,7 +625,6 @@ function capRows(key, el, sel, n = 5) {
 }
 function capAll() {
   capRows("alerts", $("#alert-list"), ".alert-row");
-  capRows("eneba", $("#panel-eneba .table-wrap"), "tbody tr");
   capRows("amazon", $("#amazon-checks"), "tbody tr");
 }
 let capTimer;
@@ -738,16 +633,12 @@ window.addEventListener("resize", () => { clearTimeout(capTimer); capTimer = set
 // ---------- settings form ----------
 const form = $("#settings");
 function fillForm() {
-  const { eneba, amazon } = settings;
-  form.threshold.value = eneba.threshold;
-  form.fee.value = eneba.fee;
-  form.product_url.value = eneba.product_url;
+  const { amazon } = settings;
   form.start_time.value = amazon.start_time;
   form.end_time.value = amazon.end_time;
   form.interval.value = amazon.interval;
   form.background_interval.value = amazon.background_interval;
   form.urls.value = amazon.urls.join("\n");
-  $("#eneba-schedule").textContent = `${eneba.schedule}. Next: ${when(eneba.next_run)}.`;
   dirty = false; $("#save").disabled = true;
 }
 function setStatus(kind, text) { const el = $("#settings-status"); el.className = `status-msg ${kind}`; el.textContent = text; }
@@ -763,7 +654,6 @@ form.addEventListener("submit", async (ev) => {
     const res = await api("/api/settings", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        eneba: { threshold: form.threshold.value, fee: form.fee.value, product_url: form.product_url.value },
         amazon: { start_time: form.start_time.value, end_time: form.end_time.value, interval: form.interval.value, background_interval: form.background_interval.value, urls: form.urls.value.split(/\n+/) },
       }),
     });
@@ -811,14 +701,7 @@ function toast(tone, ic, text) {
 
 function resultMessage(bot, since) {
   const evs = (data.audit[bot] || []).filter((e) => e.ts >= since);
-  if (!evs.length) return ["danger", "warn", `${bot === "eneba" ? "Eneba" : "Amazon"} check finished without a result. See ${bot}_bot.log.`];
-  if (bot === "eneba") {
-    const e = evs.at(-1);
-    if (e.error) return ["danger", "warn", `Eneba: ${e.error}`];
-    return e.alert
-      ? ["success", "up", `Eneba: ${num(e.ratio)} INR per ₪1. Alert sent to Telegram.`]
-      : ["neutral", "check", `Eneba: ${num(e.ratio)} INR per ₪1, below ${e.threshold}.`];
-  }
+  if (!evs.length) return ["danger", "warn", "Amazon check finished without a result. See amazon_bot.log."];
   const inStock = evs.filter((e) => e.status === "in").length;
   const blocked = evs.filter((e) => e.status === "captcha" || e.status === "error").length;
   if (inStock) return ["success", "check", `Amazon: ${inStock} of ${evs.length} in stock.${evs.some((e) => e.alert) ? " Alert sent to Telegram." : " Already reported earlier."}`];
@@ -854,23 +737,6 @@ document.addEventListener("click", (e) => {
 });
 $("#test-amazon").addEventListener("click", () => startRun("amazon", "/api/run/amazon-test", true));
 $("#refresh").addEventListener("click", () => { loadData(); loadSettings(); });
-
-// ---------- tabs ----------
-const tabs = [$("#tab-eneba"), $("#tab-amazon")];
-function selectTab(t) {
-  for (const x of tabs) {
-    const on = x === t;
-    x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1;
-    $("#" + x.getAttribute("aria-controls")).hidden = !on;
-  }
-  capAll();  // the newly shown tab could not be measured while hidden
-}
-tabs.forEach((t, i) => {
-  t.addEventListener("click", () => selectTab(t));
-  t.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") { const n = tabs[(i + 1) % 2]; selectTab(n); n.focus(); }
-  });
-});
 
 // ---------- nav highlight ----------
 const links = [...document.querySelectorAll(".nav a")];
