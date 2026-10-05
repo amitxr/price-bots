@@ -102,23 +102,29 @@ PAGE_EVERY_SECONDS = 30  # full product page as a backup this often
 SOLD_OUT_AFTER = 60
 
 
-def send_telegram(msg: str, buttons=None):
-    """Send a message; `buttons` is a list of (label, url) shown as link buttons under it."""
+def send_telegram(msg: str, buttons=None) -> bool:
+    """Send a message; `buttons` is a list of (label, url) shown as link buttons under it.
+
+    Tries 3 times (the last one without buttons, in case Telegram rejects one of the links) and
+    returns False if the message did not go out, so the caller can try again on the next check.
+    """
     print(msg)
     if not (TG_TOKEN and TG_CHAT):
-        return
-    fields = {"chat_id": TG_CHAT, "text": msg, "disable_web_page_preview": "true"}
-    if buttons:
-        fields["reply_markup"] = json.dumps(
-            {"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons if url]]}
-        )
-    body = urllib.parse.urlencode(fields).encode()
-    try:
-        urllib.request.urlopen(
-            f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", data=body, timeout=20
-        )
-    except Exception as e:
-        print(f"telegram error: {e}")
+        return True
+    for attempt in range(3):
+        fields = {"chat_id": TG_CHAT, "text": msg, "disable_web_page_preview": "true"}
+        if buttons and attempt < 2:
+            fields["reply_markup"] = json.dumps(
+                {"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons if url]]}
+            )
+        try:
+            urllib.request.urlopen(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                                   data=urllib.parse.urlencode(fields).encode(), timeout=10)
+            return True
+        except Exception as e:
+            print(f"telegram error (try {attempt + 1} of 3): {e}")
+            time.sleep(1)
+    return False
 
 
 def asin_of(url: str):
@@ -254,7 +260,7 @@ async def check_offers(ctx, asin: str) -> dict:
     if "validateCaptcha" in html or any(t in html.lower() for t in CAPTCHA_TEXTS):
         return {**info, "status": "captcha"}
     if resp.status != 200 or 'id="aod-container"' not in html:
-        return {**info, "status": "unknown"}
+        return {**info, "status": "unknown", "why": f"HTTP {resp.status}, {len(html)} bytes"}
     offers = OFFER_RE.findall(html)
     if offers or 'name="submit.addToCart"' in html:
         seller, price = offers[0] if offers else ("", "")
@@ -277,18 +283,16 @@ def combine(offers, page):
     return offers if offers["status"] == "out" else page
 
 
-async def notify(msg: str, buttons=None):
-    """send_telegram without holding up the other tabs while Telegram answers."""
-    await asyncio.to_thread(send_telegram, msg, buttons)
+async def notify(msg: str, buttons=None) -> bool:
+    """send_telegram without holding up the other checks while Telegram answers."""
+    return await asyncio.to_thread(send_telegram, msg, buttons)
 
 
 async def main():
     status_he = {"in": "✅ במלאי", "out": "❌ אזל", "captcha": "🤖 אמזון ביקשה CAPTCHA", "unknown": "❓ לא זוהה"}
     if BACKGROUND and watch_alive():
         return  # the morning watch is already checking every few seconds
-    watching = not RUN_ONCE  # the long-running morning loop
-    state = {"captcha_streak": 0, "captcha_warned": captcha_warned_recently(), "errors": 0, "round": 0}
-    page_every = max(1, round(PAGE_EVERY_SECONDS / INTERVAL))  # rounds between full product page loads
+    state = {"captcha_streak": 0, "captcha_warned": captcha_warned_recently(), "errors": 0}
     prune_file(history_path("amazon"), days=7)
     known = last_known_status()
     last = {u: known.get(u, (None,))[0] for u in URLS}  # reported stock: changes only through an alert
@@ -321,23 +325,34 @@ async def main():
                 except Exception as e:
                     print(f"could not resolve {u}: {e}")
 
-        async def check_one(u: str):
+        page_locks = {u: asyncio.Lock() for u in URLS}  # one tab per product: one page load at a time
+        alert_locks = {u: asyncio.Lock() for u in URLS}
+
+        async def load_page(u: str) -> dict:
+            async with page_locks[u]:
+                page = await check(pages[u], target[u])
+            if asin_of(page["url"]):
+                target[u] = page["url"]
+            return page
+
+        async def check_one(u: str, use_offers=True, use_page=False):
+            """Check one product, alert if needed and record it. The full page is also loaded when
+            use_page is set or the offers panel gives no clear answer."""
             try:
                 offers = page = None
                 asin = asin_of(target[u])
-                if asin:
+                if use_offers and asin:
                     try:
                         offers = await check_offers(ctx, asin)
                     except Exception as e:
                         print(f"{datetime.now(TZ):%H:%M:%S} offers panel error on {u}: {e}")
                 sure = offers and offers["status"] in ("in", "out")
-                # All-day runs are a new process every minute: the full page only every 10 minutes there.
-                backup_due = datetime.now().minute % 10 == 0 if BACKGROUND else state["round"] % page_every == 0
-                if not sure or backup_due:
+                if offers and not sure:
+                    print(f"{datetime.now(TZ):%H:%M:%S} offers panel unclear on {u} "
+                          f"({offers['status']}{', ' + offers['why'] if offers.get('why') else ''}): loading the page")
+                if not sure or use_page:
                     try:
-                        page = await check(pages[u], target[u])
-                        if asin_of(page["url"]):
-                            target[u] = page["url"]
+                        page = await load_page(u)
                     except Exception as e:
                         if not sure:
                             raise
@@ -363,66 +378,88 @@ async def main():
             seller = r.get("seller") or ""
             print(f"{datetime.now(TZ):%H:%M:%S} {r['status']:8} {r['price']:>10}  {r['title']}"
                   f"{f'  [{seller}]' if seller else ''}{'' if page else '  (offers)'}")
-            alert = False
-            in_minutes = None  # set when a product sells out again: how long it was available
+            # The offers loop and the page loop of a product can finish together: decide and send
+            # one at a time, so a restock is announced once.
+            async with alert_locks[u]:
+                alert = False
+                in_minutes = None  # set when a product sells out again: how long it was available
 
-            if TEST_MODE:
-                await notify(
-                    f"🧪 בדיקת בוט אמזון\n{r['title']}\nמצב: {status_he[r['status']]} {r['price']}"
-                    f"{f' · מוכר: {seller}' if seller else ''}\n{r['url']}",
-                    buttons=product_buttons(r),
-                )
-            elif r["status"] == "captcha":
-                state["captcha_streak"] += 1
-                if state["captcha_streak"] >= 5 and not state["captcha_warned"]:
-                    await notify("⚠️ בוט אמזון: אמזון חוסמת את הבדיקות (CAPTCHA). ייתכן שצריך להריץ מהמחשב בבית.")
-                    state["captcha_warned"] = alert = True
-            else:
-                state["captcha_streak"] = 0
-                now = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
-                out_since[u] = None if r["status"] == "in" else out_since[u] or now
-                if r["status"] == "in" and last[u] != "in":
-                    hint = ("\nאין Buy Now בדף? See All Buying Options ← Add to Cart"
-                            if r.get("via") == "offers" else "")
-                    await notify(f"🚨 זמין לקנייה באמזון!\n{r['title']}\n{r['price']}"
-                                 f"{f' · מוכר: {seller}' if seller else ''}{hint}\n{r['url']}",
-                                 buttons=product_buttons(r))
-                    alert = True
-                elif r["status"] == "out" and last[u] == "in" and seconds_since(out_since[u]) >= SOLD_OUT_AFTER:
-                    in_minutes = minutes_since(since[u])
-                    started = f" (מ-{datetime.fromisoformat(since[u]).astimezone(TZ):%H:%M})" if since[u] else ""
-                    await notify(f"❌ אזל שוב במלאי באמזון\n{r['title']}\n"
-                                 f"היה זמין {in_minutes} דקות{started}\n{r['url']}",
-                                 buttons=[("פתח מוצר", r["url"])])
-                    alert = True
-                if r["status"] in ("in", "out") and (alert or last[u] is None):  # stock changes only with its message
-                    last[u], since[u] = r["status"], now
+                if TEST_MODE:
+                    await notify(
+                        f"🧪 בדיקת בוט אמזון\n{r['title']}\nמצב: {status_he[r['status']]} {r['price']}"
+                        f"{f' · מוכר: {seller}' if seller else ''}\n{r['url']}",
+                        buttons=product_buttons(r),
+                    )
+                elif r["status"] == "captcha":
+                    state["captcha_streak"] += 1
+                    if state["captcha_streak"] >= 5 and not state["captcha_warned"]:
+                        state["captcha_warned"] = alert = await notify(
+                            "⚠️ בוט אמזון: אמזון חוסמת את הבדיקות (CAPTCHA). ייתכן שצריך להריץ מהמחשב בבית.")
+                else:
+                    state["captcha_streak"] = 0
+                    now = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
+                    out_since[u] = None if r["status"] == "in" else out_since[u] or now
+                    if r["status"] == "in" and last[u] != "in":
+                        hint = ("\nאין Buy Now בדף? See All Buying Options ← Add to Cart"
+                                if r.get("via") == "offers" else "")
+                        # Not sent (Telegram unreachable): the stock stays "out", so the next check tries again.
+                        alert = await notify(f"🚨 זמין לקנייה באמזון!\n{r['title']}\n{r['price']}"
+                                             f"{f' · מוכר: {seller}' if seller else ''}{hint}\n{r['url']}",
+                                             buttons=product_buttons(r))
+                    elif r["status"] == "out" and last[u] == "in" and seconds_since(out_since[u]) >= SOLD_OUT_AFTER:
+                        in_minutes = minutes_since(since[u])
+                        started = f" (מ-{datetime.fromisoformat(since[u]).astimezone(TZ):%H:%M})" if since[u] else ""
+                        alert = await notify(f"❌ אזל שוב במלאי באמזון\n{r['title']}\n"
+                                             f"היה זמין {in_minutes} דקות{started}\n{r['url']}",
+                                             buttons=[("פתח מוצר", r["url"])])
+                    if r["status"] in ("in", "out") and (alert or last[u] is None):  # stock changes only with its message
+                        last[u], since[u] = r["status"], now
 
-            record_event("amazon", {"link": u, "url": r["url"], "asin": asin_of(r["url"]),
-                                    "product": r["title"], "status": r["status"],
-                                    "price": r["price"], "alert": alert, "test": TEST_MODE,
-                                    **({"stock": last[u]} if r["status"] in ("in", "out") and not TEST_MODE else {}),
-                                    **({"seller": seller} if seller else {}),
-                                    **({"via": "offers"} if r.get("via") == "offers" else {}),
-                                    **({"in_minutes": in_minutes} if in_minutes is not None else {})})
+                record_event("amazon", {"link": u, "url": r["url"], "asin": asin_of(r["url"]),
+                                        "product": r["title"], "status": r["status"],
+                                        "price": r["price"], "alert": alert, "test": TEST_MODE,
+                                        **({"stock": last[u]} if r["status"] in ("in", "out") and not TEST_MODE else {}),
+                                        **({"seller": seller} if seller else {}),
+                                        **({"via": "offers"} if r.get("via") == "offers" else {}),
+                                        **({"in_minutes": in_minutes} if in_minutes is not None else {})})
             return r["status"]
 
-        while True:
-            if watching:
-                WATCH_HEARTBEAT.parent.mkdir(exist_ok=True)
-                WATCH_HEARTBEAT.touch()
+        if RUN_ONCE:
+            # All-day runs are a new process every minute: the full page only every 10 minutes there.
+            full_page = datetime.now().minute % 10 == 0 if BACKGROUND else True
             try:
-                statuses = await asyncio.gather(*(check_one(u) for u in URLS))
+                await asyncio.gather(*(check_one(u, use_page=full_page) for u in URLS))
+                await browser.close()
             except Exception as e:
                 print(f"{datetime.now(TZ):%H:%M:%S} browser gone: {e}")
-                return  # the all-day check takes over
-            state["round"] += 1
-            if RUN_ONCE or past_end():
-                break
-            # Back off while Amazon is asking for CAPTCHAs, so it lets go sooner.
-            slow = 3 if "captcha" in statuses else 1
-            await asyncio.sleep(INTERVAL * slow * random.uniform(0.8, 1.2))
+            return
 
+        # The morning watch: every product has its own loops, so a slow product page never holds up
+        # the offers checks (the ones that catch a restock first) of this or any other product.
+        async def keep_checking(u: str, use_offers: bool, every: float, start_after: float = 0):
+            await asyncio.sleep(start_after)
+            while not past_end() and browser.is_connected():
+                try:
+                    status = await check_one(u, use_offers=use_offers, use_page=not use_offers)
+                except Exception as e:  # e.g. a dead tab that could not be reopened
+                    print(f"{datetime.now(TZ):%H:%M:%S} check failed on {u}: {e}")
+                    status = "error"
+                # Back off while Amazon is asking for CAPTCHAs, so it lets go sooner.
+                await asyncio.sleep(every * (3 if status == "captcha" else 1) * random.uniform(0.8, 1.2))
+
+        loops = [asyncio.create_task(keep_checking(u, True, INTERVAL)) for u in URLS] + [
+            asyncio.create_task(keep_checking(u, False, PAGE_EVERY_SECONDS, random.uniform(0, PAGE_EVERY_SECONDS)))
+            for u in URLS]
+        WATCH_HEARTBEAT.parent.mkdir(exist_ok=True)
+        while not past_end() and browser.is_connected():
+            WATCH_HEARTBEAT.touch()
+            await asyncio.sleep(5)
+        # Stop now, not after each loop's current wait, so this never overlaps the all-day check;
+        # and remove the heartbeat so that check starts on its next minute instead of ~2 minutes later.
+        for t in loops:
+            t.cancel()
+        await asyncio.gather(*loops, return_exceptions=True)
+        WATCH_HEARTBEAT.unlink(missing_ok=True)
         await browser.close()
 
 
