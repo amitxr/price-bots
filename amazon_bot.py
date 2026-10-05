@@ -312,7 +312,9 @@ async def main():
                     except Exception as e:
                         print(f"{datetime.now(TZ):%H:%M:%S} offers panel error on {u}: {e}")
                 sure = offers and offers["status"] in ("in", "out")
-                if not sure or state["round"] % page_every == 0:
+                # All-day runs are a new process every minute: the full page only every 10 minutes there.
+                backup_due = datetime.now().minute % 10 == 0 if BACKGROUND else state["round"] % page_every == 0
+                if not sure or backup_due:
                     try:
                         page = await check(pages[u], target[u])
                         if asin_of(page["url"]):
