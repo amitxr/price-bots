@@ -110,10 +110,15 @@ def set_background_task(minutes):
         powershell(f"Unregister-ScheduledTask -TaskName '{BACKGROUND_TASK}' -Confirm:$false -ErrorAction SilentlyContinue")
         return
     pythonw = ROOT / ".venv" / "Scripts" / "pythonw.exe"  # no console window every few minutes
+    # A daily trigger repeating through the day, not a one-time trigger repeating forever: after a
+    # long sleep (5 Oct, 17:09-18:55) the one-time kind stopped starting runs until re-registered.
+    # StartWhenAvailable runs a missed check right after the PC wakes up.
     powershell(
         f"$a = New-ScheduledTaskAction -Execute '{pythonw}' -Argument 'amazon_bot.py --background' -WorkingDirectory '{ROOT}'; "
-        f"$t = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes {minutes}); "
-        "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+        "$t = New-ScheduledTaskTrigger -Daily -At '00:00'; "
+        f"$t.Repetition = (New-ScheduledTaskTrigger -Once -At '00:00' -RepetitionInterval (New-TimeSpan -Minutes {minutes}) "
+        "-RepetitionDuration (New-TimeSpan -Days 1)).Repetition; "
+        "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable "
         "-ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew; "
         f"Register-ScheduledTask -TaskName '{BACKGROUND_TASK}' -Action $a -Trigger $t -Settings $s -Force "
         "-Description 'Checks Amazon India gift cards all day, outside the morning window' | Out-Null"
