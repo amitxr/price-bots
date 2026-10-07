@@ -307,6 +307,11 @@ async def main():
     status_he = {"in": "✅ במלאי", "out": "❌ אזל", "captcha": "🤖 אמזון ביקשה CAPTCHA", "unknown": "❓ לא זוהה"}
     if BACKGROUND and watch_alive():
         return  # the morning watch is already checking every few seconds
+    if not RUN_ONCE and watch_alive():
+        # A watch started by hand is still running (e.g. the 06:30 start after a start at night):
+        # a second one would send every alert twice.
+        print(f"{datetime.now(TZ):%H:%M:%S} a watch is already running; this one exits")
+        return
     state = {"captcha_streak": 0, "captcha_warned": captcha_warned_recently(), "errors": 0}
     prune_file(history_path("amazon"), days=7)
     known = last_known_status()
