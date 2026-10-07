@@ -65,6 +65,8 @@ SETTINGS = amazon_settings()
 URLS = [u.strip() for u in re.split(r"[,\n]", os.getenv("AMAZON_URLS") or "") if u.strip()] or SETTINGS["urls"]
 END_TIME = os.getenv("END_TIME") or SETTINGS["end_time"]
 INTERVAL = int(os.getenv("INTERVAL") or SETTINGS["interval"])
+HOT_START, HOT_END = SETTINGS["hot_start"], SETTINGS["hot_end"]
+HOT_INTERVAL = float(os.getenv("HOT_INTERVAL") or SETTINGS["hot_interval"])
 TEST_MODE = (os.getenv("TEST_MODE") or "").lower() == "true"
 RUN_ONCE = TEST_MODE or (os.getenv("RUN_ONCE") or "").lower() == "true"
 TG_TOKEN = env("TELEGRAM_BOT_TOKEN")
@@ -152,6 +154,19 @@ def past_end() -> bool:
     h, m = map(int, END_TIME.split(":"))
     now = datetime.now(TZ)
     return (now.hour, now.minute) >= (h, m)
+
+
+def in_hot_window() -> bool:
+    return HOT_START <= f"{datetime.now(TZ):%H:%M}" < HOT_END
+
+
+def came_back_recently() -> set:
+    """Product links that were for sale at least once in the history file (the last 7 days)."""
+    path = history_path("amazon")
+    if not path.exists():
+        return set()
+    return {e["link"] for e in parse_events(path.read_text(encoding="utf-8"))
+            if e.get("status") == "in" and not e.get("test")}
 
 
 def watch_alive() -> bool:
@@ -436,16 +451,26 @@ async def main():
 
         # The morning watch: every product has its own loops, so a slow product page never holds up
         # the offers checks (the ones that catch a restock first) of this or any other product.
+        # Stock lasts under a minute, so the cards that have been coming back get the fastest checks
+        # in the minutes they come back. The rest keep INTERVAL, to keep Amazon from showing CAPTCHAs.
+        hot = came_back_recently() & set(URLS)
+        print(f"{datetime.now(TZ):%H:%M:%S} watch: every {INTERVAL}s; "
+              f"{len(hot)} card(s) every {HOT_INTERVAL:g}s from {HOT_START} to {HOT_END}")
+
         async def keep_checking(u: str, use_offers: bool, every: float, start_after: float = 0):
             await asyncio.sleep(start_after)
             while not past_end() and browser.is_connected():
+                started = time.monotonic()
                 try:
                     status = await check_one(u, use_offers=use_offers, use_page=not use_offers)
                 except Exception as e:  # e.g. a dead tab that could not be reopened
                     print(f"{datetime.now(TZ):%H:%M:%S} check failed on {u}: {e}")
                     status = "error"
+                wait = HOT_INTERVAL if use_offers and u in hot and in_hot_window() else every
                 # Back off while Amazon is asking for CAPTCHAs, so it lets go sooner.
-                await asyncio.sleep(every * (3 if status == "captcha" else 1) * random.uniform(0.8, 1.2))
+                wait *= (3 if status == "captcha" else 1) * random.uniform(0.8, 1.2)
+                # Counted from the start of the check, so a 2 s rhythm is 2 s and not 2 s plus Amazon's answer.
+                await asyncio.sleep(max(0.5, wait - (time.monotonic() - started)))
 
         loops = [asyncio.create_task(keep_checking(u, True, INTERVAL)) for u in URLS] + [
             asyncio.create_task(keep_checking(u, False, PAGE_EVERY_SECONDS, random.uniform(0, PAGE_EVERY_SECONDS)))

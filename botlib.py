@@ -23,6 +23,11 @@ AMAZON_DEFAULTS = {
     "end_time": "09:15",
     "interval": 5,
     "background_interval": 5,  # minutes between all-day checks outside the window (0 = off)
+    # The minutes cards have been coming back (07:35-07:42 in the week of 5 Oct; stock lasts under a
+    # minute): cards that came back recently are checked every hot_interval seconds then.
+    "hot_start": "07:20",
+    "hot_end": "07:55",
+    "hot_interval": 2,
 }
 
 
